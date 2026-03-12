@@ -55,9 +55,9 @@ CA/
 └── README.md              ← How CA works
 
 Firmware_Device/
-├── keys/
-│   ├── device_private.pem   ← Device's private key
-│   └── device_public.pem    ← Extracted public key 
+├── keys/                    ← Upon powering up these device will create the keys (Normally would have them prestored)
+│   └── device_private.pem   ← Device's private key
+│   
 │
 ├── certs/
 │   ├── device.csr           ← CSR sent to CA
