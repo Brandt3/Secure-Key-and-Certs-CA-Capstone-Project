@@ -21,11 +21,11 @@ NOTE: Certs for device are differnet then basic certs as they will have optional
 project-root/
 ├── ca/
 ├── hypervisor/
-├── firmware_devices/
-│   ├── nic/            ← possible device types
-│   ├── storage/
-│   └── bmc/
-└── firmware_device/
+└── firmware_devices/
+    ├── nic/            ← possible device types
+    ├── storage/
+    └── bmc/
+
 
 CA/
 ├── keys/
@@ -44,7 +44,7 @@ CA/
 │   ├── policy.conf        ← Validation rules
 │   └── ca_openssl.cnf     ← OpenSSL config for signing / criteria
 │
-├── database/              ← LIKELY NOT ADDING THIS Track issued certs
+├── LIKELY NOT ADDING THIS database/              ←  Track issued certs
 │   └── authorized_devices.txt  ← Valid serial numbers
 │
 ├── src/
@@ -75,10 +75,7 @@ Firmware_Device/
 
 Hypervisor/
 ├── trusted_ca/
-│   └── ca_cert.pem          ← CA public cert (trust anchor)
-│
-├── config/
-│   └── trust_policy.conf    ← Which CAs public keys to trust
+│   └── ca_cert.pem          ← CA public cert (trust anchor) / contains CA public key for verification
 │
 ├── POSSIBLE IDEA logs/
 │   ├── connections.log      ← All connection attempts
