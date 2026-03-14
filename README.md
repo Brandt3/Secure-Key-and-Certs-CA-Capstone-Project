@@ -14,7 +14,7 @@ The Power hyperviosr will only allow a connection if the trusted CA public key(s
 
 ## Big Learning Focuses
 
-1. Working on creating my own CA within a system and only signing certs that meet customized requirements. This allows for creating a personallized CA that can be used for only signing specific requirments and then on your network only allow conenction to device with your personal CA signature on certs.
+1. Working on creating my own CA within a system and only signing certs that meet customized requirements. This allows for creating a personallized CA that can be used for only signing specific requirments and then on your network only allow conenction to device with your personal CA signature on certs. **For CA currenlty this project will check the serial number, model, and firmware Version from the CSR and that the device sending the CSR has the private key to it based off the public key**
 
 2. Showing the SSL layer and how a connection between Firmware devices is not allowed until a trust relationship is ecured through a cert that is signed by a trusted CA. For the project this is only allowing device to connect to the Power Hypervisor that are signed by my custome CA. This allows for a secure system where only device matches personal criteria can be trusted and create a connections on the SSL layer to communicate.
 
