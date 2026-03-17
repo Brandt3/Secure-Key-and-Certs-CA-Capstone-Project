@@ -1,6 +1,7 @@
 # Any Form of Keys
 *.pem
 *.key
+!Sample_rsa_priv_key.pem
 
 # Build outputs
 *.o
