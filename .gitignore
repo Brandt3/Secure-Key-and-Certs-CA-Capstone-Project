@@ -1,0 +1,7 @@
+# Any Form of Keys
+*.pem
+*.key
+
+# Build outputs
+*.o
+test_program

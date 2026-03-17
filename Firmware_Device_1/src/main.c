@@ -42,7 +42,7 @@ int main() {
         // Store Key in the keys file
         // Note Keys persist across reboots (try to emulate that here as well so only create the keys once)
 
-    // Store within the key files for security
+    // Store keys within the key directory for security
     char key_name_priv[35] = "keys/firmware1_priv_rsa_key.pem";
     char key_name_pub[35] = "keys/firmware1_pub_rsa_key.pem";
 
@@ -115,7 +115,7 @@ int main() {
 
     // If csr file doesn't exist create it
     if (access(csr_fp, F_OK) != 0) {
-        FILE *priv_key_fp = fopen("firmware1_priv_rsa_key.pem", "r");
+        FILE *priv_key_fp = fopen("keys/firmware1_priv_rsa_key.pem", "r");
         if (!priv_key_fp) {
             fprintf(stderr, "Error opening private key file for device1\n");
         }
@@ -128,20 +128,92 @@ int main() {
         // Once I turn this into a function this will be the function header
         // int generate_csr_from_config(EVP_PKEY *pkey, const char *config_path)  
 
-        // STEP 1: Load OpenSSL config from file
-        CONF *conf = NCONF_new(NULL);
-        if (NCONF_load(conf, "device1_csr.conf", NULL) <= 0) {
-            fprintf(stderr, "Error loading config file for firmware device1\n");
+    // STEP 1: Load OpenSSL config from file
+        // creates a OpenSSL config structure 
+        CONF *conf = NCONF_new(NULL); 
+        char config_path[35] = "src/device1_csr.conf";
+        if (NCONF_load(conf, config_path, NULL) <= 0) {
+// FIXME code is stopping at this point 
+            ERR_print_errors_fp(stderr);
             return 1;
         }
         
-        // STEP 2: Create empty CSR object
+    // STEP 2: Create empty CSR object
+        // Allocates memory for CSR structure
         X509_REQ *csr = X509_REQ_new();
         if (!csr) {
             NCONF_free(conf);
             return 1;
         }
 
+    // STEP 3: Set CSR version (v1 = 0) 
+        X509_REQ_set_version(csr, 0);
+        
+    // STEP 4: Get the subject name section from config
+        // Sets pointer to thee subject name inside the CSR
+        // Does not allocate new memory just points to CSR internal structure
+        X509_NAME *name = X509_REQ_get_subject_name(csr);
+        if(!name) {
+            fprintf(stderr, "Error loading config file subject name for firmware device1\n");
+            return 1;
+        }
+        
+    // STEP 5: Read each field from config and add to subject
+        // Get the "req_dn" section and retursn a "stack"/list of key-value pair Ex. C = US
+        STACK_OF(CONF_VALUE) *dn_sk = NCONF_get_section(conf, "req_dn");
+        if(!dn_sk) {
+            fprintf(stderr, "Error reading config file for firmware device1\n");
+            return 1;   
+        }
+
+        // NOTE: look more into what this code is doing
+        if (dn_sk) {
+            // Loop through each entry in [req_dn] section
+            // sk_CONF_VALUE_num reeturns num of entries
+            for (int i = 0; i < sk_CONF_VALUE_num(dn_sk); i++) {
+                CONF_VALUE *v = sk_CONF_VALUE_value(dn_sk, i);
+                
+                // v->name = field name (e.g., "C", "O", "CN")
+                // v->value = field value (e.g., "US", "IBM", "Device-ABC123")
+                
+                X509_NAME_add_entry_by_txt(name, v->name, MBSTRING_ASC,
+                                            (unsigned char *)v->value, -1, -1, 0);
+            }
+        }
+
+    // STEP 6: set the public key in CSR 
+        /* NOTE: EVP_PKEY *pkey is a key container structure that stores Key type, pointer to key, and reference counter
+            So pkey stores both public and private key it just depends on how you extract it Ex. X509_REQ_set_pubkey */
+        X509_REQ_set_pubkey(csr, pkey);
+
+
+    // STEP 7: Sign the CSR with private key
+        // This proves you own the key pair
+        // Hash all CSR data with SHA-256
+        // Sign the hash with private key
+        // Attach signature to CSR
+        if (!X509_REQ_sign(csr, pkey, EVP_sha256())) {
+            fprintf(stderr, "Error signing CSR\n");
+            X509_REQ_free(csr);
+            NCONF_free(conf);
+            return 0;
+        }
+        
+    // STEP 8: Write CSR to file
+        FILE *csr_fp = fopen("certs/device1.csr", "wb");
+        if (!csr_fp) {
+            fprintf(stderr, "Error opening file\n");
+            X509_REQ_free(csr);
+            NCONF_free(conf);
+            return 0;
+        }
+        
+        PEM_write_X509_REQ(csr_fp, csr);
+        fclose(csr_fp);
+        
+    // STEP 9: Cleanup all allocated memory
+        X509_REQ_free(csr);
+        NCONF_free(conf);
         
     }
     
@@ -149,7 +221,7 @@ int main() {
     
 
     // 3. Send CSR to CA to see if it will get signed
-        // If it does store cert in certs file and delete CSR
+        // If it does store cert in certs file and delete CSR (Privode a status update in the terminal for each device)
         // If reject display message / echo "Device number could not get signed as it does not meet requirements therefore it can not try and connect to the Power Hypervisor"
 
     // 4. If it has a signed cert send it to the Power Hypervisor to try and connect
