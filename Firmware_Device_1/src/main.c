@@ -62,7 +62,6 @@ int main() {
 
     bool is_privkey_created = false;
 
-// FIXME if public key file is there but private key is not it would move on this is not okay
     // If keys doesn't exisit
     if (access(key_name_priv, F_OK) != 0) {
         is_privkey_created = true;
@@ -155,7 +154,6 @@ int main() {
 
         // Creating variable to store config file
 
-// FIXME if keys are not there and create but there is already a cert this means keys some how were deleted and the csr will not match the newly created keys
     char csr_fp[30] = "certs/device1.csr";
 
     // If csr file doesn't exist create it
@@ -178,7 +176,6 @@ int main() {
         CONF *conf = NCONF_new(NULL); 
         char config_path[35] = "src/device1_csr.conf";
         if (NCONF_load(conf, config_path, NULL) <= 0) {
-// FIXME code is stopping at this point 
             ERR_print_errors_fp(stderr);
             return 1;
         }
@@ -384,7 +381,7 @@ FILE *priv_key_fp = fopen("keys/firmware1_priv_rsa_key.pem", "r");
 
     // 4. If it has a signed cert send it to the Power Hypervisor to try and connect
 
-    // 5. If cert is trusted then perform a task or communicate with the Power Hypervisor
+    // 5. If cert is trusted and makes a secure SSL/TLS connection then perform a task or communicate with the Power Hypervisor
     
 
     return 0;
