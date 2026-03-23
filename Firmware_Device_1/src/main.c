@@ -37,14 +37,11 @@ Test Cases:
     Previously Nothing -> Create everything GOOD
     Previously Pubkey -> Create Private key, CSR, and CSR contains public key matching one derived from the private key (public key must get rewritten) GOOD
     Previously Privkey -> Create Public key, CSR, and public key matches csr public key GOOD
-BAD Previously csr -> Didn't run csr creation, creeated both keys, public key does not match csr public key BAD
+    Previously csr -> Didn't run csr creation, creeated both keys, public key matches csr public key GOOD
     Previously both keys -> Didn't create keys, created csr, public key matches public key in csr GOOD
-BAD Previously pubkey and csr -> created private key, public key does not match csr BAD
+    Previously pubkey and csr -> created private key, public key matches public key in csr GOOD
     Previously privkey and csr -> did not create extra csr, created public key, public key matches csr public key GOOD
     Previously everything -> Nothing extra created GOOD
-
-
-
 */
 
 
