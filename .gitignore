@@ -8,3 +8,5 @@
 # Build outputs
 *.o
 test_program
+listen_test
+socket_test

@@ -1,12 +1,25 @@
 #include <stdio.h>
 #include <stddef.h>
 #include <stdbool.h>
-#include <unistd.h> // library to check existing files
+#include <unistd.h> // library to check existing files and for read, write, and close functions for socket programming
 #include <openssl/pem.h> 
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/x509.h>
 #include <openssl/conf.h>
+
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+
+
+void error(const char *msg) {
+    perror(msg);
+    exit(1); 
+}
 
 
 // NOTE: good check after program is competed is to make sure each pointer have a functions return as it's value should be checked to make sure it's not NULL
@@ -45,7 +58,7 @@ Test Cases:
 */
 
 
-int main() {
+int main(int argc, char *argv[]) {
 
     // In a real situation Steps 1 and 2 already have the info stored on a secure flash (created at manufacturing) 
     // and step 2 is a presigned cert and not a csr. 
@@ -378,6 +391,74 @@ FILE *priv_key_fp = fopen("keys/firmware1_priv_rsa_key.pem", "r");
     // 3. Send CSR to CA to see if it will get signed
         // If it does store cert in certs file and delete CSR (Privode a status update in the terminal for each device)
         // If reject display message / echo "Device number could not get signed as it does not meet requirements therefore it can not try and connect to the Power Hypervisor"
+    int sockfd, portno, n;
+    struct sockaddr_in serv_addr;
+    struct hostent *server;
+
+    char buffer[255];
+
+    if (argc < 3) {
+        fprintf(stderr, "Usage: %s hostname port\n", argv[0]);
+        exit(1);
+    }
+
+    portno = atoi(argv[2]);
+
+    // Create socket
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+        error("ERROR opening socket");
+    }
+
+    // Get server address
+    server = gethostbyname(argv[1]);
+    if (server == NULL) {
+        fprintf(stderr, "ERROR, no such host\n");
+        exit(1);
+    }
+
+    // Set up address struct
+    bzero((char *) &serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+
+    bcopy((char *)server->h_addr_list[0],
+          (char *)&serv_addr.sin_addr.s_addr,
+          server->h_length);
+
+    serv_addr.sin_port = htons(portno);
+
+    // Connect to server
+    if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        error("ERROR connecting");
+    }
+
+    printf("Connected to CA server\n");
+
+    // ---- SEND DATA (CSR SIMULATION) ----
+    printf("Enter message (CSR): ");
+    bzero(buffer, 255);
+    fgets(buffer, 255, stdin);
+
+    n = write(sockfd, buffer, strlen(buffer));
+    if (n < 0) {
+        error("ERROR writing to socket");
+    }
+
+    // ---- RECEIVE RESPONSE (CERT SIMULATION) ----
+    bzero(buffer, 255);
+    n = read(sockfd, buffer, 255);
+    if (n < 0) {
+        error("ERROR reading from socket");
+    }
+
+    printf("Received from CA: %s\n", buffer);
+
+    close(sockfd);
+
+
+
+
+
 
     // 4. If it has a signed cert send it to the Power Hypervisor to try and connect
 

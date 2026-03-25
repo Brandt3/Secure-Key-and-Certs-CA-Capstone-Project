@@ -21,7 +21,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    int newsockfd, n;
+
     char buffer[255];
 
     struct sockaddr_in serv_addr, cli_addr;
@@ -44,6 +44,41 @@ int main(int argc, char *argv[]) {
     if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
         error("Binding Fialed.");
     }
+
+    // 5 is the number of clients that can connect to the server at a time
+    listen(sockfd, 5);
+    clilen = sizeof(cli_addr);
+
+    int newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+
+    if (newsockfd < 0) {
+        erorr("Error on Accept");
+    }
+
+    int n = -1;
+    while(1) {
+        bzero(buffer, 250);
+        n = read(newsockfd, buffer, 255);
+        if (n < 0) {
+            error("Error on reading.");
+        }
+        printf("%s\n", buffer);
+        bzero(buffer, 255);
+
+        fgets(buffer, 255, stdin);
+
+        n = write(newsockfd, buffer, strlen(buffer));
+        if (n < 0) {
+            error("Error on Writing.");
+        }
+
+
+
+    }
+
+    close(newsockfd);
+    close(sockfd);
+
 
     /*  Set the CA folder connected to a port to allow it to act as a server that is "always running" simulating a network with device, CA, and powerHypervisor
             Then this can run sperately and always be running if wanted
