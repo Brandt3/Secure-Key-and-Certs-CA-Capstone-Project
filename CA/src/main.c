@@ -12,7 +12,7 @@ void error(const char *msg) {
     exit(1); 
 }
 
-// Run program with 2 arguments required
+// Run program with 2 arguments required (File name and port) Ex. ./test_program 9090
 int main(int argc, char *argv[]) {
 
     // if user doens't provide 2 arguements
@@ -52,7 +52,7 @@ int main(int argc, char *argv[]) {
     int newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
 
     if (newsockfd < 0) {
-        erorr("Error on Accept");
+        error("Error on Accept");
     }
 
     int n = -1;
@@ -63,6 +63,10 @@ int main(int argc, char *argv[]) {
             error("Error on reading.");
         }
         printf("%s\n", buffer);
+        if (strcmp(buffer,"bye\n") == 0) {
+            printf("Exiting CA nice talking to you! %d    %s port #:%s", argc, argv[0], argv[1]);
+            exit(1);
+        }
         bzero(buffer, 255);
 
         fgets(buffer, 255, stdin);

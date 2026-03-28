@@ -14,6 +14,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include "declaration.h"
 
 
 void error(const char *msg) {
@@ -75,9 +76,12 @@ int main(int argc, char *argv[]) {
 
     bool is_privkey_created = false;
 
+// FUNCTION is_Priv_Key_Exist
     // If keys doesn't exisit
     if (access(key_name_priv, F_OK) != 0) {
         is_privkey_created = true;
+
+// FUNCTION generate_EVP_PKEY(int key_size)
         // Prepare area in memory for key generation
         EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL);
 
@@ -98,6 +102,7 @@ int main(int argc, char *argv[]) {
         // Free memory used for key generation
         EVP_PKEY_CTX_free(ctx);
 
+// FUNCTION create_PrivKey_File(priv_key_fp, *pkey)
         // Create file to store private key
         FILE *file_storing_Privkey = fopen(key_name_priv, "wb");
         // Make sure file opens smoothly
@@ -105,7 +110,6 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Error opening private key file\n");
             return 1;
         }
-        // There is a password arguement here could look into
         PEM_write_PrivateKey(file_storing_Privkey, pkey, NULL, NULL, 0, NULL, NULL);
         fclose(file_storing_Privkey);
 
@@ -434,24 +438,26 @@ FILE *priv_key_fp = fopen("keys/firmware1_priv_rsa_key.pem", "r");
 
     printf("Connected to CA server\n");
 
-    // ---- SEND DATA (CSR SIMULATION) ----
-    printf("Enter message (CSR): ");
-    bzero(buffer, 255);
-    fgets(buffer, 255, stdin);
+    while (1) {
+        // ---- SEND DATA (CSR SIMULATION) ----
+        printf("Enter message (CSR): ");
+        bzero(buffer, 255);
+        fgets(buffer, 255, stdin);
 
-    n = write(sockfd, buffer, strlen(buffer));
-    if (n < 0) {
-        error("ERROR writing to socket");
+        n = write(sockfd, buffer, strlen(buffer));
+        if (n < 0) {
+            error("ERROR writing to socket");
+        }
+
+        // ---- RECEIVE RESPONSE (CERT SIMULATION) ----
+        bzero(buffer, 255);
+        n = read(sockfd, buffer, 255);
+        if (n < 0) {
+            error("ERROR reading from socket");
+        }
+
+        printf("Received from CA: %s\n", buffer);
     }
-
-    // ---- RECEIVE RESPONSE (CERT SIMULATION) ----
-    bzero(buffer, 255);
-    n = read(sockfd, buffer, 255);
-    if (n < 0) {
-        error("ERROR reading from socket");
-    }
-
-    printf("Received from CA: %s\n", buffer);
 
     close(sockfd);
 
