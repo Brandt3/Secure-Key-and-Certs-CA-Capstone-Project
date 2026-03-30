@@ -17,12 +17,6 @@
 #include "declaration.h"
 
 
-void error(const char *msg) {
-    perror(msg);
-    exit(1); 
-}
-
-
 // NOTE: good check after program is competed is to make sure each pointer have a functions return as it's value should be checked to make sure it's not NULL
     // Look to create efficeint debugging functions to prevemt redundant code here
 
@@ -58,7 +52,7 @@ Test Cases:
     Previously everything -> Nothing extra created GOOD
 */
 
-
+// Needs file, server IP address (loopback for internal, port number)
 int main(int argc, char *argv[]) {
 
     // In a real situation Steps 1 and 2 already have the info stored on a secure flash (created at manufacturing) 
@@ -71,63 +65,42 @@ int main(int argc, char *argv[]) {
         // Note Keys persist across reboots (try to emulate that here as well so only create the keys once)
 
     // Store keys within the key directory for security
-    char key_name_priv[35] = "keys/firmware1_priv_rsa_key.pem";
-    char key_name_pub[35] = "keys/firmware1_pub_rsa_key.pem";
+    const char key_name_priv[35] = "keys/firmware1_priv_rsa_key.pem";
+    const char key_name_pub[35] = "keys/firmware1_pub_rsa_key.pem";
+    const int key_size = 2048;
 
     bool is_privkey_created = false;
 
-// FUNCTION is_Priv_Key_Exist
-    // If keys doesn't exisit
-    if (access(key_name_priv, F_OK) != 0) {
+// If keys doesn't exisit
+    if (!is_Key_Exist(key_name_priv)) {
         is_privkey_created = true;
 
-// FUNCTION generate_EVP_PKEY(int key_size)
-        // Prepare area in memory for key generation
-        EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL);
+    // Create pkey structure which stores public and private key along with other attirbutes
+        EVP_PKEY *pkey = generate_EVP_PKEY(key_size);
 
-        // Check for OpenSSL memory prepartion failure
-        if (!ctx) {
-            fprintf(stderr, "Error preparing area in memory for Firmware Device 1 key creation\n");
-            ERR_print_errors_fp(stderr);
-            return 1;
-        }
-
-        // Initilize key generation at ctx location
-        EVP_PKEY_keygen_init(ctx);
-        // Set size of RSA key
-        EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, 2048);
-        // Generate the key at pkey location
-        EVP_PKEY *pkey = NULL;
-        EVP_PKEY_keygen(ctx, &pkey);
-        // Free memory used for key generation
-        EVP_PKEY_CTX_free(ctx);
-
-// FUNCTION create_PrivKey_File(priv_key_fp, *pkey)
-        // Create file to store private key
-        FILE *file_storing_Privkey = fopen(key_name_priv, "wb");
-        // Make sure file opens smoothly
-        if (!file_storing_Privkey) {
+    // Write private key to secure .pem file
+        if (file_Create_PrivKey_Write(key_name_priv, pkey) == ERROR) {
             fprintf(stderr, "Error opening private key file\n");
-            return 1;
+            // FUNCTION STOP PROGRAM
+            exit(1);
         }
-        PEM_write_PrivateKey(file_storing_Privkey, pkey, NULL, NULL, 0, NULL, NULL);
-        fclose(file_storing_Privkey);
 
-        // Write public key
-        FILE *file_storing_Pubkey = fopen(key_name_pub, "wb");
-        // Make sure file opens smoothly
-        if (!file_storing_Pubkey) {
+    // Write public key
+        if (file_Create_PubKey_Write(key_name_pub, pkey) == ERROR) {
             fprintf(stderr, "Error opening public key file\n");
-            return 1;
+            // FUNCTION STOP PROGRAM
+            exit(1);
         }
-        PEM_write_PUBKEY(file_storing_Pubkey, pkey);        
-        fclose(file_storing_Pubkey);
-
+    
         // Free memory storing key data structure as it is now written to a file a shouldn't be store to memory
-        EVP_PKEY_free(pkey);
-        pkey = NULL;
+        free_Pkey(pkey);
  
-    } else if(access(key_name_pub, F_OK) != 0) { //If there is a private key but not public key create public key from already created private key
+//  Check if public key fp exist / is created
+    } else if(!is_Key_Exist(key_name_pub)) { //If there is a private key but not public key create public key from already created private key
+        
+        
+
+// NOTHING HERE YET
         FILE *priv_key_fp = fopen("keys/firmware1_priv_rsa_key.pem", "r");
         if (!priv_key_fp) {
             fprintf(stderr, "Error opening private key file for device1 for public key creation\n");
@@ -135,32 +108,31 @@ int main(int argc, char *argv[]) {
 
         EVP_PKEY *pkey = PEM_read_PrivateKey(priv_key_fp, NULL, NULL, NULL);
 
-    // This is redundant code and could be turned into a function later on
-        // Write public key
-        FILE *file_storing_Pubkey = fopen(key_name_pub, "wb");
-        // Make sure file opens smoothly
-        if (!file_storing_Pubkey) {
+    // Write public key
+        if (file_Create_PubKey_Write(key_name_pub, pkey) == ERROR) {
             fprintf(stderr, "Error opening public key file\n");
-            return 1;
+            // FUNCTION STOP PROGRAM
+            exit(1);
         }
-        PEM_write_PUBKEY(file_storing_Pubkey, pkey);        
-        fclose(file_storing_Pubkey);
 
-        // Free memory storing key data structure as it is now written to a file a shouldn't be store to memory
-        EVP_PKEY_free(pkey);
-        pkey = NULL;
-
+    // Free memory storing key data structure as it is now written to a file a shouldn't be store to memory
+        free_Pkey(pkey);
 
     } else {
         printf("Didn't run key creation they are already created\n");
 
     }
 
-    // Intersting factor the pkey is only created if key isn't already created
-    // If it is there is no pkey for csr creation
-    // SOLUTION: you can still create a csr as long as the private key is saved.
-        // Therefore the csr creationg will use the private key file instead of the pkey structure so it 
-        // doesn't have to be recreated in case the keys are created but not the csr
+
+// ======= FUNCTION HAVE NOT BEEN CREATED FOR BELOW CODE =======
+
+    /*
+    Intersting factor the pkey is only created if key isn't already created
+    If it is there is no pkey for csr creation
+    SOLUTION: you can still create a csr as long as the private key is saved.
+        Therefore the csr creationg will use the private key file instead of the pkey structure so it 
+        doesn't have to be recreated in case the keys are created but not the csr
+    */
 
 
 
@@ -171,7 +143,7 @@ int main(int argc, char *argv[]) {
 
         // Creating variable to store config file
 
-    char csr_fp[30] = "certs/device1.csr";
+    const char csr_fp[30] = "certs/device1.csr";
 
     // If csr file doesn't exist create it
     if (access(csr_fp, F_OK) != 0) {
@@ -281,14 +253,14 @@ int main(int argc, char *argv[]) {
         }
 
 // All this is duplicate code that can be put into a function 
-FILE *priv_key_fp = fopen("keys/firmware1_priv_rsa_key.pem", "r");
+        FILE *priv_key_fp = fopen("keys/firmware1_priv_rsa_key.pem", "r");
         if (!priv_key_fp) {
             fprintf(stderr, "Error opening private key file for device1\n");
         }
 
         EVP_PKEY *pkey = PEM_read_PrivateKey(priv_key_fp, NULL, NULL, NULL);
         if (!pkey) {
-            fprintf(stderr, "Creating pkey based of private key file reading failed for device 1\n");
+            fprintf(stderr, "Error creating pkey based of private key file reading failed for device 1\n");
         }
 
         // Once I turn this into a function this will be the function header
@@ -395,6 +367,7 @@ FILE *priv_key_fp = fopen("keys/firmware1_priv_rsa_key.pem", "r");
     // 3. Send CSR to CA to see if it will get signed
         // If it does store cert in certs file and delete CSR (Privode a status update in the terminal for each device)
         // If reject display message / echo "Device number could not get signed as it does not meet requirements therefore it can not try and connect to the Power Hypervisor"
+        // Can look into ssl_connect, ssl_write, ssl_read which is used to authenicate the server trying to connect to
     int sockfd, portno, n;
     struct sockaddr_in serv_addr;
     struct hostent *server;
@@ -440,13 +413,49 @@ FILE *priv_key_fp = fopen("keys/firmware1_priv_rsa_key.pem", "r");
 
     while (1) {
         // ---- SEND DATA (CSR SIMULATION) ----
-        printf("Enter message (CSR): ");
-        bzero(buffer, 255);
-        fgets(buffer, 255, stdin);
+        printf("Sending CSR for signing: ");
+        const char cert_fp[25] = "certs/device1.csr";
 
-        n = write(sockfd, buffer, strlen(buffer));
+        FILE *fp = fopen(cert_fp, "rb");
+        if (!fp) {
+            printf("Error opening csr file on device 1\n");
+            break;
+        }
+
+        long file_size = 0;
+        // Go to end of file to get size
+        if (fseek(fp, 0, SEEK_END) == 0) {
+        // Get the current position (which is the file size in bytes)
+        file_size = ftell(fp);
+        // Reset the file pointer to the beginning if further reading is needed
+        rewind(fp); 
+        } else {
+            perror("Error seeking to end of file");
+        }
+
+
+// FIXME currently working reading the csr to a buffer and sending that across the socket
+
+        char *buffer = malloc(file_size);
+        if (!buffer) {
+            fprintf(stderr, "Failed to malloc for buffer on device 1");
+            free(buffer);
+            fclose(fp);
+            exit(1);
+        }
+
+        size_t file_read = fread(buffer, 1, file_size, fp);
+
+
+        n = send(sockfd, &file_size, sizeof(file_size), 0);
         if (n < 0) {
-            error("ERROR writing to socket");
+            error("ERROR sending size to socket");
+        }
+
+        n = send(sockfd, buffer, file_size, 0);
+        free(buffer);
+        if (n < 0) {
+            error("ERROR sending data socket");
         }
 
         // ---- RECEIVE RESPONSE (CERT SIMULATION) ----
