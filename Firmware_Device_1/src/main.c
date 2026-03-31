@@ -65,8 +65,8 @@ int main(int argc, char *argv[]) {
         // Note Keys persist across reboots (try to emulate that here as well so only create the keys once)
 
     // Store keys within the key directory for security
-    const char key_name_priv[35] = "keys/firmware1_priv_rsa_key.pem";
-    const char key_name_pub[35] = "keys/firmware1_pub_rsa_key.pem";
+    const char key_name_priv[] = "keys/firmware1_priv_rsa_key.pem";
+    const char key_name_pub[] = "keys/firmware1_pub_rsa_key.pem";
     const int key_size = 2048;
 
     bool is_privkey_created = false;
@@ -143,7 +143,7 @@ int main(int argc, char *argv[]) {
 
         // Creating variable to store config file
 
-    const char csr_fp[30] = "certs/device1.csr";
+    const char csr_fp[] = "certs/device1.csr";
 
     // If csr file doesn't exist create it
     if (access(csr_fp, F_OK) != 0) {
@@ -372,8 +372,7 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in serv_addr;
     struct hostent *server;
 
-    char buffer[255];
-
+// Checking to make sure port and host IP was included when ran
     if (argc < 3) {
         fprintf(stderr, "Usage: %s hostname port\n", argv[0]);
         exit(1);
@@ -411,62 +410,74 @@ int main(int argc, char *argv[]) {
 
     printf("Connected to CA server\n");
 
-    while (1) {
-        // ---- SEND DATA (CSR SIMULATION) ----
-        printf("Sending CSR for signing: ");
-        const char cert_fp[25] = "certs/device1.csr";
+    // ---- SEND DATA (CSR SIMULATION) ----
+    printf("Sending CSR for signing: ");
 
-        FILE *fp = fopen(cert_fp, "rb");
-        if (!fp) {
-            printf("Error opening csr file on device 1\n");
-            break;
-        }
+// Opening csr file to get file size and send
+    FILE *fp = fopen(csr_fp, "rb");
+    if (!fp) {
+        printf("Error opening csr file on device 1\n");
+        exit(1);
+    }
 
-        long file_size = 0;
-        // Go to end of file to get size
-        if (fseek(fp, 0, SEEK_END) == 0) {
-        // Get the current position (which is the file size in bytes)
-        file_size = ftell(fp);
-        // Reset the file pointer to the beginning if further reading is needed
-        rewind(fp); 
-        } else {
-            perror("Error seeking to end of file");
-        }
+    long file_size = 0;
+    // Go to end of file to get size
+    if (fseek(fp, 0, SEEK_END) == 0) {
+    // Get the current position (which is the file size in bytes)
+    file_size = ftell(fp);
+    // Reset the file pointer to the beginning if further reading is needed
+    rewind(fp); 
+    } else {
+        perror("Error seeking to end of file");
+    }
 
 
 // FIXME currently working reading the csr to a buffer and sending that across the socket
 
-        char *buffer = malloc(file_size);
-        if (!buffer) {
-            fprintf(stderr, "Failed to malloc for buffer on device 1");
-            free(buffer);
-            fclose(fp);
-            exit(1);
-        }
+    // char *buffer = malloc(file_size);
+    // if (!buffer) {
+    //     fprintf(stderr, "Failed to malloc for buffer on device 1");
+    //     free(buffer);
+    //     fclose(fp);
+    //     exit(1);
+    // }
+    //     free(buffer);
 
-        size_t file_read = fread(buffer, 1, file_size, fp);
 
+    char buffer[255];
 
-        n = send(sockfd, &file_size, sizeof(file_size), 0);
-        if (n < 0) {
-            error("ERROR sending size to socket");
-        }
+// Getting size of csr file to send expected size to CA
+    size_t file_read = fread(buffer, 1, file_size, fp);
 
-        n = send(sockfd, buffer, file_size, 0);
-        free(buffer);
-        if (n < 0) {
-            error("ERROR sending data socket");
-        }
-
-        // ---- RECEIVE RESPONSE (CERT SIMULATION) ----
-        bzero(buffer, 255);
-        n = read(sockfd, buffer, 255);
-        if (n < 0) {
-            error("ERROR reading from socket");
-        }
-
-        printf("Received from CA: %s\n", buffer);
+// Sending size of expected data to CA
+    n = send(sockfd, &file_size, sizeof(file_size), 0);
+    if (n < 0) {
+        error("ERROR sending size to socket");
     }
+
+    ssize_t total_sent = 0;
+
+// Send data/bytes until total size sent = the file size
+    while (total_sent < file_size) {
+        ssize_t n = send(sockfd, buffer + total_sent, file_size - total_sent, 0);
+        if (n <= 0) {
+            error("Error sending csr to device 1 over the socket\n");
+        }
+        total_sent += n;
+    }
+
+
+
+
+    // ---- RECEIVE RESPONSE (CERT SIMULATION) ----
+    bzero(buffer, 255);
+    n = read(sockfd, buffer, 255);
+    if (n < 0) {
+        error("ERROR reading from socket");
+    }
+
+    printf("Received from CA: %s\n", buffer);
+
 
     close(sockfd);
 

@@ -22,8 +22,6 @@ int main(int argc, char *argv[]) {
     }
 
 
-    char buffer[255];
-
     struct sockaddr_in serv_addr, cli_addr;
 
     // Data type 32 bit
@@ -49,36 +47,40 @@ int main(int argc, char *argv[]) {
     listen(sockfd, 5);
     clilen = sizeof(cli_addr);
 
+// Eveentually loop this so it connitnuously is listening and accepting clients connection and csr's
+
     int newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
 
     if (newsockfd < 0) {
         error("Error on Accept");
     }
 
-    int n = -1;
-    while(1) {
-        bzero(buffer, 250);
-        n = read(newsockfd, buffer, 255);
-        if (n < 0) {
-            error("Error on reading.");
-        }
-        printf("%s\n", buffer);
-        if (strcmp(buffer,"bye\n") == 0) {
-            printf("Exiting CA nice talking to you! %d    %s port #:%s", argc, argv[0], argv[1]);
-            exit(1);
-        }
-        bzero(buffer, 255);
+    char buffer[255];
+    int val = recv(sockfd, buffer, sizeof(buffer), 0);
+    if (val <= 0) error("Failed to recieve size of expected data for the CA\n");
 
-        fgets(buffer, 255, stdin);
-
-        n = write(newsockfd, buffer, strlen(buffer));
-        if (n < 0) {
-            error("Error on Writing.");
-        }
+    ssize_t expect_file_size = buffer;
 
 
-
+    ssize_t total = 0;
+    while (total < expect_file_size) {
+        ssize_t n = recv(sockfd, buffer + total, expect_file_size - total, 0);
+        if (n <= 0) error("recieve failed for the CA\n");
+        total += n;
     }
+
+    printf("The data received is %s", buffer);
+
+    bzero(buffer, 255);
+
+    strcpy(buffer, "recieved data and will send cert later");
+
+    int n = write(newsockfd, buffer, strlen(buffer));
+    if (n < 0) {
+        error("Error on Writing.");
+    }
+
+
 
     close(newsockfd);
     close(sockfd);
