@@ -22,7 +22,7 @@ The Power hyperviosr will only allow a connection if the trusted CA public key(s
 
 
 
-NOTE: Certs for device are differnet then basic certs as they will have optional exteension fields to show Firmware version, Hardware model, date manufactured using (using config file or -addext)
+NOTE: Certs for device are differnet then basic certs as they will have optional extension fields to show Firmware version, Hardware model, date manufactured using (using config file or -addext)
 
 # File Structure
 
