@@ -5,6 +5,10 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <openssl/pem.h> 
+#include <openssl/evp.h>
+#include <openssl/err.h>
+#include <openssl/x509.h>
 
 
 void error(const char *msg) {
@@ -50,38 +54,41 @@ int main(int argc, char *argv[]) {
 // Eveentually loop this so it connitnuously is listening and accepting clients connection and csr's
 
     int newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
-
     if (newsockfd < 0) {
         error("Error on Accept");
     }
 
-    char buffer[255];
-    int val = recv(sockfd, buffer, sizeof(buffer), 0);
+    size_t expect_file_size = 0;
+
+    int val = recv(newsockfd, &expect_file_size, sizeof(expect_file_size), 0);
     if (val <= 0) error("Failed to recieve size of expected data for the CA\n");
 
-    ssize_t expect_file_size = buffer;
 
+    char buffer[expect_file_size];
 
-    ssize_t total = 0;
+    size_t total = 0;
     while (total < expect_file_size) {
-        ssize_t n = recv(sockfd, buffer + total, expect_file_size - total, 0);
+        ssize_t n = recv(newsockfd, buffer + total, expect_file_size - total, 0);
         if (n <= 0) error("recieve failed for the CA\n");
         total += n;
     }
 
-    printf("The data received is %s", buffer);
+    
 
-    bzero(buffer, 255);
 
-    strcpy(buffer, "recieved data and will send cert later");
 
-    int n = write(newsockfd, buffer, strlen(buffer));
-    if (n < 0) {
-        error("Error on Writing.");
+// Validation of received data
+    FILE *csr_fp = fopen("certs/signed/received.csr", "wb");
+    if (!csr_fp) {
+        fprintf(stderr, "Error in CA trying to open csr file to write\n");
+        return 1;
     }
+    fwrite(buffer, 1, total, csr_fp);
+
+    fclose(csr_fp);
 
 
-
+    printf("\nClosed\n");
     close(newsockfd);
     close(sockfd);
 

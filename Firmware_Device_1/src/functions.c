@@ -20,7 +20,6 @@
 void error(const char *msg) {
     perror(msg);
     // Include closed socket connection
-    exit(1);
     return;
 }
 

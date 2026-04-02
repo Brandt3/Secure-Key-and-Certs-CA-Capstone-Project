@@ -271,7 +271,6 @@ int main(int argc, char *argv[]) {
         CONF *conf = NCONF_new(NULL); 
         char config_path[35] = "src/device1_csr.conf";
         if (NCONF_load(conf, config_path, NULL) <= 0) {
-// FIXME code is stopping at this point 
             ERR_print_errors_fp(stderr);
             return 1;
         }
@@ -281,6 +280,7 @@ int main(int argc, char *argv[]) {
         X509_REQ *csr = X509_REQ_new();
         if (!csr) {
             NCONF_free(conf);
+            fprintf(stderr, "Failed to allocate memory for CSR structure");
             return 1;
         }
 
@@ -368,7 +368,6 @@ int main(int argc, char *argv[]) {
         // If it does store cert in certs file and delete CSR (Privode a status update in the terminal for each device)
         // If reject display message / echo "Device number could not get signed as it does not meet requirements therefore it can not try and connect to the Power Hypervisor"
         // Can look into ssl_connect, ssl_write, ssl_read which is used to authenicate the server trying to connect to
-    int sockfd, portno, n;
     struct sockaddr_in serv_addr;
     struct hostent *server;
 
@@ -378,10 +377,10 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    portno = atoi(argv[2]);
+    int portno = atoi(argv[2]);
 
     // Create socket
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         error("ERROR opening socket");
     }
@@ -405,13 +404,11 @@ int main(int argc, char *argv[]) {
 
     // Connect to server
     if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-        error("ERROR connecting");
+        error("ERROR connecting to server on Device 1\n");
+        exit(1);
     }
 
     printf("Connected to CA server\n");
-
-    // ---- SEND DATA (CSR SIMULATION) ----
-    printf("Sending CSR for signing: ");
 
 // Opening csr file to get file size and send
     FILE *fp = fopen(csr_fp, "rb");
@@ -420,46 +417,34 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    long file_size = 0;
+    size_t file_size = 0;
     // Go to end of file to get size
     if (fseek(fp, 0, SEEK_END) == 0) {
-    // Get the current position (which is the file size in bytes)
-    file_size = ftell(fp);
-    // Reset the file pointer to the beginning if further reading is needed
-    rewind(fp); 
+        file_size = ftell(fp);         // Get the current position (which is the file size in bytes)
+        rewind(fp);         // Reset the file pointer to the beginning if further reading is needed
     } else {
         perror("Error seeking to end of file");
     }
 
 
-// FIXME currently working reading the csr to a buffer and sending that across the socket
+    char buffer[file_size];
 
-    // char *buffer = malloc(file_size);
-    // if (!buffer) {
-    //     fprintf(stderr, "Failed to malloc for buffer on device 1");
-    //     free(buffer);
-    //     fclose(fp);
-    //     exit(1);
-    // }
-    //     free(buffer);
-
-
-    char buffer[255];
-
-// Getting size of csr file to send expected size to CA
-    size_t file_read = fread(buffer, 1, file_size, fp);
+// Getting content of csr file to send to CA
+    ssize_t bytes_read = fread(buffer, 1, file_size, fp);
 
 // Sending size of expected data to CA
-    n = send(sockfd, &file_size, sizeof(file_size), 0);
+    int n = send(sockfd, &bytes_read, sizeof(bytes_read), 0);
     if (n < 0) {
         error("ERROR sending size to socket");
     }
-
     ssize_t total_sent = 0;
 
+    // ---- SEND DATA (CSR SIMULATION) ----
+    printf("Sending CSR for signing: \n");
+
 // Send data/bytes until total size sent = the file size
-    while (total_sent < file_size) {
-        ssize_t n = send(sockfd, buffer + total_sent, file_size - total_sent, 0);
+    while (total_sent < bytes_read) {
+        ssize_t n = send(sockfd, &buffer + total_sent, bytes_read - total_sent, 0);
         if (n <= 0) {
             error("Error sending csr to device 1 over the socket\n");
         }
@@ -468,15 +453,6 @@ int main(int argc, char *argv[]) {
 
 
 
-
-    // ---- RECEIVE RESPONSE (CERT SIMULATION) ----
-    bzero(buffer, 255);
-    n = read(sockfd, buffer, 255);
-    if (n < 0) {
-        error("ERROR reading from socket");
-    }
-
-    printf("Received from CA: %s\n", buffer);
 
 
     close(sockfd);
