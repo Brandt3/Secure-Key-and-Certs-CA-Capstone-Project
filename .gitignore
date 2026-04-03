@@ -13,3 +13,6 @@ CA_test_port
 
 # Certs the CA review
 CA/certs/
+
+# Personal database used
+CA/database/approved_devices.txt

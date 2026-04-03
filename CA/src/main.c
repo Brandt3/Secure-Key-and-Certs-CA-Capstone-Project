@@ -97,35 +97,73 @@ int main(int argc, char *argv[]) {
     
 
 /* Step 3: Once reecieved a CSR reads and Validate CSR was signed by private key of matching public key (integrity)
+
     
     Things needed to be checked by CA before the csr can get signed
-        * private key used to sign matches the public key a for authenticity
-        * The hash of the data to check for integrity 
+        * private key used to sign matches the public key for authenticity
+        * When you hash the body of the csr it should match the hash in the signature this checks the integrity 
         * Check serial number that it's in the databse and unused
         * Device name that it's in the database and unused
 */
 
-
-// Validation of received data
+    // Writing csr to file to then conveert file to openSSL req struct to perform functions on
     FILE *csr_fp = fopen("certs/signed/received.csr", "wb");
     if (!csr_fp) {
         fprintf(stderr, "Error in CA trying to open csr file to write\n");
         return 1;
     }
     fwrite(buffer, 1, total, csr_fp);
+    fclose(csr_fp);         // Reset the file pointer to the beginning if further reading is needed
 
-    fclose(csr_fp);
+    // Reading csr and putting it into a openSSL struct 
+    FILE *read_csr_fp = fopen("certs/signed/received.csr", "r");
+    X509_REQ *req = PEM_read_X509_REQ(read_csr_fp, NULL, NULL, NULL);
+    fclose(read_csr_fp);
+
+    // Extract public key from the csr
+    EVP_PKEY *pubkey = X509_REQ_get_pubkey(req);
+    // Checking Authenticity and Integrity 
+    printf("Checking CSR's authenticity and integrity...\n");
+    int check = X509_REQ_verify(req, pubkey); // Hashes the body and decrypts the signature using the public key and compares the two
+    if (check < 0) {
+        printf("Error during verification\n");
+        EVP_PKEY_free(pubkey);
+        X509_REQ_free(req); 
+        return -1;    
+    } else if (check == 0) {
+        printf("CSR signature is INVALID\n");
+        EVP_PKEY_free(pubkey);
+        X509_REQ_free(req);
+        return -1;
+    }
+
+    printf("CSR's authenticity and integrity verified moving on to check fields... \n");
+    EVP_PKEY_free(pubkey);
+
+
+
+    X509_NAME *subject = X509_REQ_get_subject_name(req); //Pulls all fields into a structured object
+    char common_name[256];
+    char serial_num[256];
+    char organization[256];
+    X509_NAME_get_text_by_NID(subject, NID_commonName, common_name, sizeof(common_name));
+    X509_NAME_get_text_by_NID(subject, NID_serialNumber, serial_num, sizeof(serial_num));
+    X509_NAME_get_text_by_NID(subject, NID_organizationName, organization, sizeof(organization));
+
+    printf("After reading the csr this device is %s from the %s and the SN is %s", common_name, organization, serial_num);
+
+
+
+
+
+    X509_REQ_free(req);
+
+
 
 
     printf("\nClosed\n");
     close(newsockfd);
     close(sockfd);
-
-
-
-
-
-
 
     return 0;
 }

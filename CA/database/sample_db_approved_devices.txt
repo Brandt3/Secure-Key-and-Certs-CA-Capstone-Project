@@ -1,0 +1,3 @@
+O|Organization Name|CN|firmware-device-001|serialNumber|ABC-123456
+O|Organization Name|CN|firmware-device-002|serialNumber|ABC-654321
+O|Organization Name|CN|firmware-device-003|serialNumber|ABC-000111
