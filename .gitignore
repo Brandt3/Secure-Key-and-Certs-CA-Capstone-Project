@@ -19,3 +19,4 @@ CA/database/temp_approved_devices.txt
 
 # All config files
 *.conf
+!sample_csr.conf

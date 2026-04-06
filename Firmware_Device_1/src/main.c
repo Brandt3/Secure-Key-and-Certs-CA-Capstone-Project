@@ -159,7 +159,7 @@ int main(int argc, char *argv[]) {
     // STEP 1: Load OpenSSL config from file
         // creates a OpenSSL config structure 
         CONF *conf = NCONF_new(NULL); 
-        const char config_path[] = "Firmware_Device_1/src/device1_csr.conf";
+        const char config_path[] = "Firmware_Device_1/config/device1_csr.conf";
         if (NCONF_load(conf, config_path, NULL) <= 0) {
             ERR_print_errors_fp(stderr);
             return 1;
@@ -265,7 +265,7 @@ int main(int argc, char *argv[]) {
     // STEP 1: Load OpenSSL config from file
         // creates a OpenSSL config structure 
         CONF *conf = NCONF_new(NULL); 
-        char config_path[] = "Firmware_Device_1/src/device1_csr.conf";
+        char config_path[] = "Firmware_Device_1/config/device1_csr.conf";
         if (NCONF_load(conf, config_path, NULL) <= 0) {
             ERR_print_errors_fp(stderr);
             return 1;
