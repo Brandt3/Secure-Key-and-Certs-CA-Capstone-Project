@@ -16,3 +16,4 @@ CA/certs/
 
 # Personal database used
 CA/database/approved_devices.txt
+CA/database/temp_approved_devices.txt

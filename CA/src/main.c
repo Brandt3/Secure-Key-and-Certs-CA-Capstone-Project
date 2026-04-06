@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -143,16 +144,106 @@ int main(int argc, char *argv[]) {
 
 
     X509_NAME *subject = X509_REQ_get_subject_name(req); //Pulls all fields into a structured object
-    char common_name[256];
-    char serial_num[256];
-    char organization[256];
-    X509_NAME_get_text_by_NID(subject, NID_commonName, common_name, sizeof(common_name));
-    X509_NAME_get_text_by_NID(subject, NID_serialNumber, serial_num, sizeof(serial_num));
-    X509_NAME_get_text_by_NID(subject, NID_organizationName, organization, sizeof(organization));
+    char csr_common_name[256];
+    char csr_serial_num[256];
+    char csr_organization[256];
+    X509_NAME_get_text_by_NID(subject, NID_commonName, csr_common_name, sizeof(csr_common_name));
+    X509_NAME_get_text_by_NID(subject, NID_serialNumber, csr_serial_num, sizeof(csr_serial_num));
+    X509_NAME_get_text_by_NID(subject, NID_organizationName, csr_organization, sizeof(csr_organization));
 
-    printf("After reading the csr this device is %s from the %s and the SN is %s", common_name, organization, serial_num);
+    printf("Device info after reading CSR Org -> %s Com Name -> %s Ser Num -> %s\n", csr_organization, csr_common_name, csr_serial_num);
+
+    // Normally this would be a change to a SQL database instead of writing to a file
+    FILE *db_fp = fopen("database/approved_devices.txt", "r");
+    if (!db_fp) {
+        fprintf(stderr, "Error trying to open Approved Devices Data base\n");
+        close(newsockfd);
+        close(sockfd);
+        return -1;
+    }
+    FILE *temp_db_fp = fopen("database/temp_approved_devices.txt", "wb");
+    if (!temp_db_fp) {
+        fprintf(stderr, "Error trying to open TEMP Approved Devices Data base\n");
+        close(newsockfd);
+        close(sockfd);
+        return -1;
+    }
+    char db_buffer[256];
+    bool is_device_approved = false;
+
+// 
+    while(fgets(db_buffer, sizeof(db_buffer), db_fp) != NULL) {
+        int wordcount = 0;
+        char org[25] = "";
+        char com_n[25] = "";
+        char sn[25] = "";
+        int index_org = 0;
+        int index_com_n = 0;
+        int index_sn = 0;
+
+      
+        // Check if device already been signed off then skip to next device in database
+        if (db_buffer[0] == '1') {
+            fwrite(db_buffer, sizeof(db_buffer), 1, temp_db_fp);
+            continue;
+        }
+
+    // Extracting each key word from the database for comparison
+        for(size_t i  = 2; i < strlen(db_buffer) + 1; ++i) {
+            if (db_buffer[i] == '|') {
+                ++wordcount;
+                continue;
+            }
+        // Important to replace \n with \0 so the string compare is perfect
+            if (wordcount == 0) {
+                if (db_buffer[i] == '\n') {
+                    org[index_org++] = '\0';
+                    continue;
+                }
+                org[index_org++] = db_buffer[i];
+            } else if (wordcount == 1) {
+                if (db_buffer[i] == '\n') {
+                    com_n[index_com_n++] = '\0';
+                    continue;
+                }
+                com_n[index_com_n++] = db_buffer[i];
+            } else {
+                if (db_buffer[i] == '\n') {
+                    sn[index_sn++] = '\0';
+                    continue;
+                }
+                sn[index_sn++] = db_buffer[i];
+            }
+        }
+        // Technically not needed because of how strings were intilaized but good practice
+        org[index_org] = '\0';
+        com_n[index_com_n] = '\0';
+        sn[index_sn] = '\0';
 
 
+        // See if the csr data matches the database
+        if (strcmp(org, csr_organization) + strcmp(com_n, csr_common_name) + strcmp(sn, csr_serial_num) == 0) {
+            printf("CSR matched Database attempted to update database...\n");
+            fprintf(temp_db_fp, "1|%s|%s|%s\n", org, com_n, sn);
+            printf("1|%s|%s|%s\n", org, com_n, sn);
+            is_device_approved = true;
+            printf("Database updated sending Cert signed by me \"CA\" back to device %s...", com_n);
+
+        } else {
+            fprintf(temp_db_fp, "0|%s|%s|%s\n", org, com_n, sn);
+
+        }
+
+    }
+    fclose(db_fp);
+
+// FIXME next step is to replace old DB with enw updated DB then sign the cert and send it back to the device
+
+
+    // based off is_device_approved then sign cert and send it back
+
+    if (is_device_approved) {
+    }
 
 
 
