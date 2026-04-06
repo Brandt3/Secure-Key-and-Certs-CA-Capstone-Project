@@ -4,7 +4,6 @@
 !sample_rsa_priv_key.pem
 !sample_rsa_pub_key.pem
 
-
 # Build outputs
 *.o
 test_program
@@ -17,3 +16,6 @@ CA/certs/
 # Personal database used
 CA/database/approved_devices.txt
 CA/database/temp_approved_devices.txt
+
+# All config files
+*.conf

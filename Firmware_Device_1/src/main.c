@@ -14,7 +14,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
-#include "declaration.h"
+#include "file_utils.h"
 
 
 // NOTE: good check after program is competed is to make sure each pointer have a functions return as it's value should be checked to make sure it's not NULL
@@ -65,13 +65,13 @@ int main(int argc, char *argv[]) {
         // Note Keys persist across reboots (try to emulate that here as well so only create the keys once)
 
     // Store keys within the key directory for security
-    const char key_name_priv[] = "keys/firmware1_priv_rsa_key.pem";
-    const char key_name_pub[] = "keys/firmware1_pub_rsa_key.pem";
+    const char key_name_priv[] = "Firmware_Device_1/keys/firmware1_priv_rsa_key.pem";
+    const char key_name_pub[] = "Firmware_Device_1/keys/firmware1_pub_rsa_key.pem";
     const int key_size = 2048;
 
     bool is_privkey_created = false;
 
-// If keys doesn't exisit
+// If private key doesn't exist
     if (!is_Key_Exist(key_name_priv)) {
         is_privkey_created = true;
 
@@ -97,11 +97,7 @@ int main(int argc, char *argv[]) {
  
 //  Check if public key fp exist / is created
     } else if(!is_Key_Exist(key_name_pub)) { //If there is a private key but not public key create public key from already created private key
-        
-        
-
-// NOTHING HERE YET
-        FILE *priv_key_fp = fopen("keys/firmware1_priv_rsa_key.pem", "r");
+        FILE *priv_key_fp = fopen("Firmware_Device_1/keys/firmware1_priv_rsa_key.pem", "r");
         if (!priv_key_fp) {
             fprintf(stderr, "Error opening private key file for device1 for public key creation\n");
         }
@@ -143,11 +139,11 @@ int main(int argc, char *argv[]) {
 
         // Creating variable to store config file
 
-    const char csr_fp[] = "certs/device1.csr";
+    const char csr_fp[] = "Firmware_Device_1/certs/device1.csr";
 
     // If csr file doesn't exist create it
     if (access(csr_fp, F_OK) != 0) {
-        FILE *priv_key_fp = fopen("keys/firmware1_priv_rsa_key.pem", "r");
+        FILE *priv_key_fp = fopen("Firmware_Device_1/keys/firmware1_priv_rsa_key.pem", "r");
         if (!priv_key_fp) {
             fprintf(stderr, "Error opening private key file for device1\n");
         }
@@ -163,7 +159,7 @@ int main(int argc, char *argv[]) {
     // STEP 1: Load OpenSSL config from file
         // creates a OpenSSL config structure 
         CONF *conf = NCONF_new(NULL); 
-        char config_path[35] = "src/device1_csr.conf";
+        const char config_path[] = "Firmware_Device_1/src/device1_csr.conf";
         if (NCONF_load(conf, config_path, NULL) <= 0) {
             ERR_print_errors_fp(stderr);
             return 1;
@@ -231,7 +227,7 @@ int main(int argc, char *argv[]) {
         }
         
     // STEP 8: Write CSR to file
-        FILE *csr_fp = fopen("certs/device1.csr", "wb");
+        FILE *csr_fp = fopen("Firmware_Device_1/certs/device1.csr", "wb");
         if (!csr_fp) {
             fprintf(stderr, "Error opening file\n");
             X509_REQ_free(csr);
@@ -253,7 +249,7 @@ int main(int argc, char *argv[]) {
         }
 
 // All this is duplicate code that can be put into a function 
-        FILE *priv_key_fp = fopen("keys/firmware1_priv_rsa_key.pem", "r");
+        FILE *priv_key_fp = fopen("Firmware_Device_1/keys/firmware1_priv_rsa_key.pem", "r");
         if (!priv_key_fp) {
             fprintf(stderr, "Error opening private key file for device1\n");
         }
@@ -269,7 +265,7 @@ int main(int argc, char *argv[]) {
     // STEP 1: Load OpenSSL config from file
         // creates a OpenSSL config structure 
         CONF *conf = NCONF_new(NULL); 
-        char config_path[35] = "src/device1_csr.conf";
+        char config_path[] = "Firmware_Device_1/src/device1_csr.conf";
         if (NCONF_load(conf, config_path, NULL) <= 0) {
             ERR_print_errors_fp(stderr);
             return 1;
@@ -338,7 +334,7 @@ int main(int argc, char *argv[]) {
         }
         
     // STEP 8: Write CSR to file
-        FILE *csr_fp = fopen("certs/device1.csr", "wb");
+        FILE *csr_fp = fopen("Firmware_Device_1/certs/device1.csr", "wb");
         if (!csr_fp) {
             fprintf(stderr, "Error opening file\n");
             X509_REQ_free(csr);

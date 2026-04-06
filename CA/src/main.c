@@ -10,12 +10,7 @@
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/x509.h>
-
-
-void error(const char *msg) {
-    perror(msg);
-    exit(1); 
-}
+#include "file_utils.h"
 
 
 /*  Set the CA folder connected to a port to allow it to act as a server that is "always running" simulating a network with device, CA, and powerHypervisor
@@ -37,6 +32,36 @@ void error(const char *msg) {
 
 // Run program with 2 arguments required (File name and port) Ex. ./test_program 9090
 int main(int argc, char *argv[]) {
+// Step 0: Create pubulic key, private key, and cert for CA only one time
+    const char key_name_priv[] = "CA/keys/ca_priv_rsa_key.pem";
+    const char key_name_pub[] = "CA/keys/ca_pub_rsa_key.pem";
+    const int key_size = 2048;
+
+    // If private key doesn't exist it is created and also Power Sever CA public key must be updated
+        // But the CA public key should already be created and stored in the TPM of the Power Sever
+    if (!is_Key_Exist(key_name_priv)) {
+    // Create pkey structure which stores public and private key along with other attirbutes
+        EVP_PKEY *pkey = generate_EVP_PKEY(key_size);
+
+    // Write private key to secure .pem file
+        if (file_Create_PrivKey_Write(key_name_priv, pkey) == ERROR) {
+            fprintf(stderr, "Error opening private key file\n");
+            // FUNCTION STOP PROGRAM
+            exit(1);
+        }
+        // Write public key
+        if (file_Create_PubKey_Write(key_name_pub, pkey) == ERROR) {
+            fprintf(stderr, "Error opening public key file\n");
+            // FUNCTION STOP PROGRAM
+            exit(1);
+        }
+    
+        // Free memory storing key data structure as it is now written to a file a shouldn't be store to memory
+        free_Pkey(pkey);
+    }
+
+
+
 
 // Step 1: On powering up connect to a port
     // if user doens't provide 2 arguements
@@ -108,7 +133,7 @@ int main(int argc, char *argv[]) {
 */
 
     // Writing csr to file to then conveert file to openSSL req struct to perform functions on
-    FILE *csr_fp = fopen("certs/signed/received.csr", "wb");
+    FILE *csr_fp = fopen("CA/certs/signed/received.csr", "wb");
     if (!csr_fp) {
         fprintf(stderr, "Error in CA trying to open csr file to write\n");
         return 1;
@@ -117,7 +142,7 @@ int main(int argc, char *argv[]) {
     fclose(csr_fp);         // Reset the file pointer to the beginning if further reading is needed
 
     // Reading csr and putting it into a openSSL struct 
-    FILE *read_csr_fp = fopen("certs/signed/received.csr", "r");
+    FILE *read_csr_fp = fopen("CA/certs/signed/received.csr", "r");
     X509_REQ *req = PEM_read_X509_REQ(read_csr_fp, NULL, NULL, NULL);
     fclose(read_csr_fp);
 
@@ -154,14 +179,14 @@ int main(int argc, char *argv[]) {
     printf("Device info after reading CSR Org -> %s Com Name -> %s Ser Num -> %s\n", csr_organization, csr_common_name, csr_serial_num);
 
     // Normally this would be a change to a SQL database instead of writing to a file
-    FILE *db_fp = fopen("database/approved_devices.txt", "r");
+    FILE *db_fp = fopen("CA/database/approved_devices.txt", "r");
     if (!db_fp) {
         fprintf(stderr, "Error trying to open Approved Devices Data base\n");
         close(newsockfd);
         close(sockfd);
         return -1;
     }
-    FILE *temp_db_fp = fopen("database/temp_approved_devices.txt", "wb");
+    FILE *temp_db_fp = fopen("CA/database/temp_approved_devices.txt", "wb");
     if (!temp_db_fp) {
         fprintf(stderr, "Error trying to open TEMP Approved Devices Data base\n");
         close(newsockfd);
@@ -171,7 +196,6 @@ int main(int argc, char *argv[]) {
     char db_buffer[256];
     bool is_device_approved = false;
 
-// 
     while(fgets(db_buffer, sizeof(db_buffer), db_fp) != NULL) {
         int wordcount = 0;
         char org[25] = "";
@@ -181,6 +205,7 @@ int main(int argc, char *argv[]) {
         int index_com_n = 0;
         int index_sn = 0;
 
+
       
         // Check if device already been signed off then skip to next device in database
         if (db_buffer[0] == '1') {
@@ -188,7 +213,7 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-    // Extracting each key word from the database for comparison
+        // Extracting each key word from the database for comparison
         for(size_t i  = 2; i < strlen(db_buffer) + 1; ++i) {
             if (db_buffer[i] == '|') {
                 ++wordcount;
@@ -227,23 +252,33 @@ int main(int argc, char *argv[]) {
             fprintf(temp_db_fp, "1|%s|%s|%s\n", org, com_n, sn);
             printf("1|%s|%s|%s\n", org, com_n, sn);
             is_device_approved = true;
-            printf("Database updated sending Cert signed by me \"CA\" back to device %s...", com_n);
+            printf("Database updated sending Cert signed by me \"CA\" sending back to device %s...", com_n);
 
         } else {
             fprintf(temp_db_fp, "0|%s|%s|%s\n", org, com_n, sn);
-
         }
 
     }
+    fclose(temp_db_fp);
     fclose(db_fp);
 
-// FIXME next step is to replace old DB with enw updated DB then sign the cert and send it back to the device
-
+// This is not ideal method for handling database but that is not the current focus can come back and improve later on
+// Replacing old database with updated database
+    if (remove("CA/database/approved_devices.txt") != 0) {
+        perror("Error removing the old file");
+    }
+    if (rename("CA/database/temp_approved_devices.txt", "CA/database/approved_devices.txt") != 0) {
+        perror("Error renaming the new file");
+    }
 
     // based off is_device_approved then sign cert and send it back
 
     if (is_device_approved) {
+        printf("Here I will sign cert");
+    } else {
+        printf("Device is not approved to be signed by the CA\n");
     }
+
 
 
 
