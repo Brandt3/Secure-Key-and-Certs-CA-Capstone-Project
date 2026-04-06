@@ -81,15 +81,15 @@ int main(int argc, char *argv[]) {
     // Write private key to secure .pem file
         if (file_Create_PrivKey_Write(key_name_priv, pkey) == ERROR) {
             fprintf(stderr, "Error opening private key file\n");
-            // FUNCTION STOP PROGRAM
-            exit(1);
+            free_Pkey(pkey);            
+            return -1;
         }
 
     // Write public key
         if (file_Create_PubKey_Write(key_name_pub, pkey) == ERROR) {
             fprintf(stderr, "Error opening public key file\n");
-            // FUNCTION STOP PROGRAM
-            exit(1);
+            free_Pkey(pkey);            
+            return -1;
         }
     
         // Free memory storing key data structure as it is now written to a file a shouldn't be store to memory

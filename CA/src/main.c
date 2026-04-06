@@ -36,6 +36,8 @@ int main(int argc, char *argv[]) {
     const char key_name_priv[] = "CA/keys/ca_priv_rsa_key.pem";
     const char key_name_pub[] = "CA/keys/ca_pub_rsa_key.pem";
     const int key_size = 2048;
+    static long serial = 2; // Unique value set to certs serial number for future this should be from a file so it is stored
+
 
     // If private key doesn't exist it is created and also Power Sever CA public key must be updated
         // But the CA public key should already be created and stored in the TPM of the Power Sever
@@ -52,9 +54,49 @@ int main(int argc, char *argv[]) {
         // Write public key
         if (file_Create_PubKey_Write(key_name_pub, pkey) == ERROR) {
             fprintf(stderr, "Error opening public key file\n");
-            // FUNCTION STOP PROGRAM
-            exit(1);
+            free_Pkey(pkey);
+            return -1;
         }
+
+        // Once I move this to a function this is what it will return  X509 *create_ca_cert(EVP_PKEY *ca_key) 
+            X509 *cert = X509_new();
+            X509_set_version(cert, 2); //  version (v3)
+            ASN1_INTEGER_set(X509_get_serialNumber(cert), 1); // Set cert serial number
+            X509_gmtime_adj(X509_get_notBefore(cert), 0);   // Set validity to now
+            X509_gmtime_adj(X509_get_notAfter(cert), 31536000L); // 1 year
+
+            // subject name (CA identity)
+            X509_NAME *name = X509_get_subject_name(cert);
+    // FIXME instead of static values loop through config file for subject data device 1 does this
+            X509_NAME_add_entry_by_txt(name, "C",  MBSTRING_ASC,
+                                    (unsigned char *)"US", -1, -1, 0);
+            X509_NAME_add_entry_by_txt(name, "O",  MBSTRING_ASC,
+                                    (unsigned char *)"MyOrg", -1, -1, 0);
+            X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
+                                    (unsigned char *)"MyRootCA", -1, -1, 0);
+
+            // issuer = subject (self-signed)
+            X509_set_issuer_name(cert, name);
+
+            // public key
+            X509_set_pubkey(cert, ca_key);
+
+            // 🔥 IMPORTANT EXTENSION: mark as CA
+            X509_EXTENSION *ext;
+            ext = X509V3_EXT_conf_nid(NULL, NULL, NID_basic_constraints, "CA:TRUE");
+            X509_add_ext(cert, ext, -1);
+            X509_EXTENSION_free(ext);
+
+            // key usage (optional but good)
+            ext = X509V3_EXT_conf_nid(NULL, NULL, NID_key_usage,
+                                    "keyCertSign, cRLSign");
+            X509_add_ext(cert, ext, -1);
+            X509_EXTENSION_free(ext);
+
+            // sign with CA private key (self-sign)
+            X509_sign(cert, ca_key, EVP_sha256());
+        
+
     
         // Free memory storing key data structure as it is now written to a file a shouldn't be store to memory
         free_Pkey(pkey);
@@ -167,7 +209,7 @@ int main(int argc, char *argv[]) {
     EVP_PKEY_free(pubkey);
 
 
-
+// Checking CSR fields compared to database
     X509_NAME *subject = X509_REQ_get_subject_name(req); //Pulls all fields into a structured object
     char csr_common_name[256];
     char csr_serial_num[256];
@@ -205,14 +247,11 @@ int main(int argc, char *argv[]) {
         int index_com_n = 0;
         int index_sn = 0;
 
-
-      
         // Check if device already been signed off then skip to next device in database
         if (db_buffer[0] == '1') {
             fwrite(db_buffer, sizeof(db_buffer), 1, temp_db_fp);
             continue;
         }
-
         // Extracting each key word from the database for comparison
         for(size_t i  = 2; i < strlen(db_buffer) + 1; ++i) {
             if (db_buffer[i] == '|') {
@@ -245,19 +284,17 @@ int main(int argc, char *argv[]) {
         com_n[index_com_n] = '\0';
         sn[index_sn] = '\0';
 
-
         // See if the csr data matches the database
         if (strcmp(org, csr_organization) + strcmp(com_n, csr_common_name) + strcmp(sn, csr_serial_num) == 0) {
             printf("CSR matched Database attempted to update database...\n");
             fprintf(temp_db_fp, "1|%s|%s|%s\n", org, com_n, sn);
             printf("1|%s|%s|%s\n", org, com_n, sn);
             is_device_approved = true;
-            printf("Database updated sending Cert signed by me \"CA\" sending back to device %s...", com_n);
+            printf("Database updated sending Cert signed by me \"CA\" sending back to device %s...\n", com_n);
 
         } else {
             fprintf(temp_db_fp, "0|%s|%s|%s\n", org, com_n, sn);
         }
-
     }
     fclose(temp_db_fp);
     fclose(db_fp);
@@ -265,16 +302,35 @@ int main(int argc, char *argv[]) {
 // This is not ideal method for handling database but that is not the current focus can come back and improve later on
 // Replacing old database with updated database
     if (remove("CA/database/approved_devices.txt") != 0) {
-        perror("Error removing the old file");
+        perror("Error updating the old  database file");
     }
     if (rename("CA/database/temp_approved_devices.txt", "CA/database/approved_devices.txt") != 0) {
-        perror("Error renaming the new file");
+        perror("Error updating the new database file");
     }
 
     // based off is_device_approved then sign cert and send it back
 
     if (is_device_approved) {
-        printf("Here I will sign cert");
+        printf("CSR meets all requirements I will now sign the CSR and send a Certificate back to you...\n");
+        FILE *priv_key_fp = fopen("CA/keys/ca_priv_rsa_key.pem", "r");
+        if (!priv_key_fp) {
+            fprintf(stderr, "Error opening private key file for CA for signing the cert\n");
+        }
+        EVP_PKEY *ca_priv_key = PEM_read_PrivateKey(priv_key_fp, NULL, NULL, NULL); // Get private key from key file
+
+
+        X509 *cert = X509_new();
+        X509_set_version(cert, 2);        // Set version of cert
+        ASN1_INTEGER_set(X509_get_serialNumber(cert), serial++);   // Create a serial num for cert
+        X509_set_issuer_name(cert, X509_get_subject_name(ca_cert));  // Set name of CA (issuer of the cert)  
+        X509_set_subject_name(cert, X509_REQ_get_subject_name(req));  // Set subject from devices csr
+        EVP_PKEY *pubkey = X509_REQ_get_pubkey(req);    // Get public key from device csr
+        X509_set_pubkey(cert, pubkey);
+        X509_gmtime_adj(X509_get_notBefore(cert), 0);   // Set dates for when cert is valid 0 = now
+        X509_gmtime_adj(X509_get_notAfter(cert), 31536000L);
+        // Signing cert that contains info about the csr, device, and CA
+        X509_sign(cert, ca_priv_key, EVP_sha256());
+
     } else {
         printf("Device is not approved to be signed by the CA\n");
     }
