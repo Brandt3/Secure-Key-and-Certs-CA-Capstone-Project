@@ -10,6 +10,7 @@
 #include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/x509.h>
+#include <openssl/x509v3.h>
 #include "file_utils.h"
 
 
@@ -48,58 +49,110 @@ int main(int argc, char *argv[]) {
     // Write private key to secure .pem file
         if (file_Create_PrivKey_Write(key_name_priv, pkey) == ERROR) {
             fprintf(stderr, "Error opening private key file\n");
-            // FUNCTION STOP PROGRAM
-            exit(1);
+            free_Pkey(pkey);
+            return ERROR;
         }
         // Write public key
         if (file_Create_PubKey_Write(key_name_pub, pkey) == ERROR) {
             fprintf(stderr, "Error opening public key file\n");
             free_Pkey(pkey);
-            return -1;
+            return ERROR;
         }
 
         // Once I move this to a function this is what it will return  X509 *create_ca_cert(EVP_PKEY *ca_key) 
-            X509 *cert = X509_new();
-            X509_set_version(cert, 2); //  version (v3)
-            ASN1_INTEGER_set(X509_get_serialNumber(cert), 1); // Set cert serial number
-            X509_gmtime_adj(X509_get_notBefore(cert), 0);   // Set validity to now
-            X509_gmtime_adj(X509_get_notAfter(cert), 31536000L); // 1 year
+        X509 *cert = X509_new();
+        X509_set_version(cert, 2); //  version (v3)
+        ASN1_INTEGER_set(X509_get_serialNumber(cert), 1); // Set cert serial number
+        X509_gmtime_adj(X509_get_notBefore(cert), 0);   // Set validity to now
+        X509_gmtime_adj(X509_get_notAfter(cert), 31536000L); // 1 year
 
-            // subject name (CA identity)
-            X509_NAME *name = X509_get_subject_name(cert);
-    // FIXME instead of static values loop through config file for subject data device 1 does this
-            X509_NAME_add_entry_by_txt(name, "C",  MBSTRING_ASC,
-                                    (unsigned char *)"US", -1, -1, 0);
-            X509_NAME_add_entry_by_txt(name, "O",  MBSTRING_ASC,
-                                    (unsigned char *)"MyOrg", -1, -1, 0);
-            X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC,
-                                    (unsigned char *)"MyRootCA", -1, -1, 0);
+        // subject name (CA identity)
+        X509_NAME *name = X509_get_subject_name(cert);
 
-            // issuer = subject (self-signed)
-            X509_set_issuer_name(cert, name);
+        // creates a OpenSSL config structure 
+        CONF *conf = NCONF_new(NULL); 
+        const char config_path[] = "CA/config/CA_cert.conf";
+        if (NCONF_load(conf, config_path, NULL) <= 0) {
+            ERR_print_errors_fp(stderr);
+            return ERROR;
+        }
 
-            // public key
-            X509_set_pubkey(cert, ca_key);
+        // Get the "req_dn" section and returns a "stack"/list of key-value pair Ex. C = US
+        STACK_OF(CONF_VALUE) *dn_sk = NCONF_get_section(conf, "req_dn");
+        if(!dn_sk) {
+            fprintf(stderr, "Error reading config file for CA\n");
+            return ERROR;   
+        }
 
-            // 🔥 IMPORTANT EXTENSION: mark as CA
-            X509_EXTENSION *ext;
-            ext = X509V3_EXT_conf_nid(NULL, NULL, NID_basic_constraints, "CA:TRUE");
-            X509_add_ext(cert, ext, -1);
-            X509_EXTENSION_free(ext);
-
-            // key usage (optional but good)
-            ext = X509V3_EXT_conf_nid(NULL, NULL, NID_key_usage,
-                                    "keyCertSign, cRLSign");
-            X509_add_ext(cert, ext, -1);
-            X509_EXTENSION_free(ext);
-
-            // sign with CA private key (self-sign)
-            X509_sign(cert, ca_key, EVP_sha256());
+        // NOTE: look more into what this code is doing
+        if (dn_sk) {
+            // Loop through each entry in [req_dn] section
+            // sk_CONF_VALUE_num returns num of entries
+            for (int i = 0; i < sk_CONF_VALUE_num(dn_sk); i++) {
+                CONF_VALUE *v = sk_CONF_VALUE_value(dn_sk, i);
+                
+                // v->name = field name (e.g., "C", "O", "CN")
+                // v->value = field value (e.g., "US", "IBM", "Device-ABC123")
+                
+                X509_NAME_add_entry_by_txt(name, v->name, MBSTRING_ASC,
+                                            (unsigned char *)v->value, -1, -1, 0);
+            }
+        }
         
 
-    
+        // issuer = subject (self-signed)
+        X509_set_issuer_name(cert, name);
+
+        // public key
+        if (X509_set_pubkey(cert, pkey) == 0) {
+            ERR_print_errors_fp(stderr);
+            free_Pkey(pkey);
+            NCONF_free(conf);
+            return -1;
+        }
+
+        // IMPORTANT EXTENSION: mark as CA
+        X509_EXTENSION *ext;
+        ext = X509V3_EXT_conf_nid(NULL, NULL, NID_basic_constraints, "CA:TRUE");
+        X509_add_ext(cert, ext, -1);
+        X509_EXTENSION_free(ext);
+
+        // key usage allowing it to sign other certs
+        ext = X509V3_EXT_conf_nid(NULL, NULL, NID_key_usage,
+                                "keyCertSign,cRLSign");
+        X509_add_ext(cert, ext, -1);
+        X509_EXTENSION_free(ext);
+
+        // sign with CA private key (self-sign)
+        if (X509_sign(cert, pkey, EVP_sha256()) == 0) {
+            ERR_print_errors_fp(stderr);
+            free_Pkey(pkey);
+            NCONF_free(conf);
+            return -1;
+        }
+
+        FILE *ca_cert_fp = fopen("CA/certs/personal/ca_cert.pem", "w");
+        if (ca_cert_fp == NULL) {
+            fprintf(stderr, "Failed to open CA cert file for writing\n");
+            free_Pkey(pkey);
+            X509_free(cert);
+            return ERROR;
+        }
+
+        if (PEM_write_X509(ca_cert_fp, cert) != 1) {
+            fprintf(stderr, "Failed to write CA cert to file\n");
+            fclose(ca_cert_fp);
+            free_Pkey(pkey);
+            X509_free(cert);
+            return ERROR;
+        }
+
+        fclose(ca_cert_fp);
         // Free memory storing key data structure as it is now written to a file a shouldn't be store to memory
+        X509_free(cert);
         free_Pkey(pkey);
+        NCONF_free(conf);
+
     }
 
 
@@ -112,9 +165,7 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-
     struct sockaddr_in serv_addr, cli_addr;
-
     // Data type 32 bit
     socklen_t clilen;
 
@@ -154,7 +205,6 @@ int main(int argc, char *argv[]) {
 
 
     char buffer[expect_file_size];
-
     size_t total = 0;
     while (total < expect_file_size) {
         ssize_t n = recv(newsockfd, buffer + total, expect_file_size - total, 0);
@@ -178,7 +228,7 @@ int main(int argc, char *argv[]) {
     FILE *csr_fp = fopen("CA/certs/signed/received.csr", "wb");
     if (!csr_fp) {
         fprintf(stderr, "Error in CA trying to open csr file to write\n");
-        return 1;
+        return ERROR;
     }
     fwrite(buffer, 1, total, csr_fp);
     fclose(csr_fp);         // Reset the file pointer to the beginning if further reading is needed
@@ -197,12 +247,12 @@ int main(int argc, char *argv[]) {
         printf("Error during verification\n");
         EVP_PKEY_free(pubkey);
         X509_REQ_free(req); 
-        return -1;    
+        return ERROR;    
     } else if (check == 0) {
         printf("CSR signature is INVALID\n");
         EVP_PKEY_free(pubkey);
         X509_REQ_free(req);
-        return -1;
+        return -ERROR;
     }
 
     printf("CSR's authenticity and integrity verified moving on to check fields... \n");
@@ -226,14 +276,14 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Error trying to open Approved Devices Data base\n");
         close(newsockfd);
         close(sockfd);
-        return -1;
+        return ERROR;
     }
     FILE *temp_db_fp = fopen("CA/database/temp_approved_devices.txt", "wb");
     if (!temp_db_fp) {
         fprintf(stderr, "Error trying to open TEMP Approved Devices Data base\n");
         close(newsockfd);
         close(sockfd);
-        return -1;
+        return ERROR;
     }
     char db_buffer[256];
     bool is_device_approved = false;
@@ -249,7 +299,7 @@ int main(int argc, char *argv[]) {
 
         // Check if device already been signed off then skip to next device in database
         if (db_buffer[0] == '1') {
-            fwrite(db_buffer, sizeof(db_buffer), 1, temp_db_fp);
+            fprintf(temp_db_fp, "%s\n", db_buffer);
             continue;
         }
         // Extracting each key word from the database for comparison
@@ -290,7 +340,7 @@ int main(int argc, char *argv[]) {
             fprintf(temp_db_fp, "1|%s|%s|%s\n", org, com_n, sn);
             printf("1|%s|%s|%s\n", org, com_n, sn);
             is_device_approved = true;
-            printf("Database updated sending Cert signed by me \"CA\" sending back to device %s...\n", com_n);
+            printf("Database updated for device %s...\n", com_n);
 
         } else {
             fprintf(temp_db_fp, "0|%s|%s|%s\n", org, com_n, sn);
@@ -312,24 +362,55 @@ int main(int argc, char *argv[]) {
 
     if (is_device_approved) {
         printf("CSR meets all requirements I will now sign the CSR and send a Certificate back to you...\n");
+        
+        char device_cert_dest[50] = "CA/certs/signed/";
+        strcat(device_cert_dest, csr_common_name);
+        strcat(device_cert_dest, ".pem");
+        printf("%s", device_cert_dest);
+
+        FILE *device_cert_fp = fopen("device_cert_dest", "w");
+        if (!device_cert_fp) {
+            fprintf(stderr, "Error opening device cert file to write cert\n");
+            return ERROR;
+        }
+
+
         FILE *priv_key_fp = fopen("CA/keys/ca_priv_rsa_key.pem", "r");
         if (!priv_key_fp) {
             fprintf(stderr, "Error opening private key file for CA for signing the cert\n");
+            return ERROR;
         }
         EVP_PKEY *ca_priv_key = PEM_read_PrivateKey(priv_key_fp, NULL, NULL, NULL); // Get private key from key file
-
+        fclose(priv_key_fp);
+        
+        FILE *ca_cert_fp = fopen("CA/certs/personal/ca_cert.pem", "r");
+        if (!ca_cert_fp) {
+            fprintf(stderr, "Error opening CA cert for signing the cert\n");
+            return ERROR;           
+        }
+        X509 *ca_cert = PEM_read_X509(ca_cert_fp, NULL, NULL, NULL);
+        fclose(ca_cert_fp);
 
         X509 *cert = X509_new();
         X509_set_version(cert, 2);        // Set version of cert
         ASN1_INTEGER_set(X509_get_serialNumber(cert), serial++);   // Create a serial num for cert
         X509_set_issuer_name(cert, X509_get_subject_name(ca_cert));  // Set name of CA (issuer of the cert)  
         X509_set_subject_name(cert, X509_REQ_get_subject_name(req));  // Set subject from devices csr
+
         EVP_PKEY *pubkey = X509_REQ_get_pubkey(req);    // Get public key from device csr
         X509_set_pubkey(cert, pubkey);
         X509_gmtime_adj(X509_get_notBefore(cert), 0);   // Set dates for when cert is valid 0 = now
         X509_gmtime_adj(X509_get_notAfter(cert), 31536000L);
         // Signing cert that contains info about the csr, device, and CA
         X509_sign(cert, ca_priv_key, EVP_sha256());
+        EVP_PKEY_free(ca_priv_key);
+
+        if (PEM_write_X509(device_cert_fp, cert) != 1) {
+            fprintf(stderr, "Failed to write Device cert to file\n");
+            X509_free(cert);
+            return ERROR;
+        }
+
 
     } else {
         printf("Device is not approved to be signed by the CA\n");

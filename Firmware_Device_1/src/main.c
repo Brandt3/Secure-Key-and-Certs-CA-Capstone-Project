@@ -82,14 +82,14 @@ int main(int argc, char *argv[]) {
         if (file_Create_PrivKey_Write(key_name_priv, pkey) == ERROR) {
             fprintf(stderr, "Error opening private key file\n");
             free_Pkey(pkey);            
-            return -1;
+            return ERROR;
         }
 
     // Write public key
         if (file_Create_PubKey_Write(key_name_pub, pkey) == ERROR) {
             fprintf(stderr, "Error opening public key file\n");
             free_Pkey(pkey);            
-            return -1;
+            return ERROR;
         }
     
         // Free memory storing key data structure as it is now written to a file a shouldn't be store to memory
@@ -162,7 +162,7 @@ int main(int argc, char *argv[]) {
         const char config_path[] = "Firmware_Device_1/config/device1_csr.conf";
         if (NCONF_load(conf, config_path, NULL) <= 0) {
             ERR_print_errors_fp(stderr);
-            return 1;
+            return ERROR;
         }
         
     // STEP 2: Create empty CSR object
@@ -170,7 +170,7 @@ int main(int argc, char *argv[]) {
         X509_REQ *csr = X509_REQ_new();
         if (!csr) {
             NCONF_free(conf);
-            return 1;
+            return ERROR;
         }
 
     // STEP 3: Set CSR version (v1 = 0) 
@@ -182,7 +182,7 @@ int main(int argc, char *argv[]) {
         X509_NAME *name = X509_REQ_get_subject_name(csr);
         if(!name) {
             fprintf(stderr, "Error loading config file subject name for firmware device1\n");
-            return 1;
+            return ERROR;
         }
         
     // STEP 5: Read each field from config and add to subject
@@ -190,7 +190,7 @@ int main(int argc, char *argv[]) {
         STACK_OF(CONF_VALUE) *dn_sk = NCONF_get_section(conf, "req_dn");
         if(!dn_sk) {
             fprintf(stderr, "Error reading config file for firmware device1\n");
-            return 1;   
+            return ERROR;   
         }
 
         // NOTE: look more into what this code is doing
@@ -223,7 +223,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Error signing CSR\n");
             X509_REQ_free(csr);
             NCONF_free(conf);
-            return 0;
+            return ERROR;
         }
         
     // STEP 8: Write CSR to file
@@ -232,7 +232,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Error opening file\n");
             X509_REQ_free(csr);
             NCONF_free(conf);
-            return 0;
+            return ERROR;
         }
         
         PEM_write_X509_REQ(csr_fp, csr);
@@ -268,7 +268,7 @@ int main(int argc, char *argv[]) {
         char config_path[] = "Firmware_Device_1/config/device1_csr.conf";
         if (NCONF_load(conf, config_path, NULL) <= 0) {
             ERR_print_errors_fp(stderr);
-            return 1;
+            return ERROR;
         }
         
     // STEP 2: Create empty CSR object
@@ -277,7 +277,7 @@ int main(int argc, char *argv[]) {
         if (!csr) {
             NCONF_free(conf);
             fprintf(stderr, "Failed to allocate memory for CSR structure");
-            return 1;
+            return ERROR;
         }
 
     // STEP 3: Set CSR version (v1 = 0) 
@@ -289,7 +289,7 @@ int main(int argc, char *argv[]) {
         X509_NAME *name = X509_REQ_get_subject_name(csr);
         if(!name) {
             fprintf(stderr, "Error loading config file subject name for firmware device1\n");
-            return 1;
+            return ERROR;
         }
         
     // STEP 5: Read each field from config and add to subject
@@ -297,7 +297,7 @@ int main(int argc, char *argv[]) {
         STACK_OF(CONF_VALUE) *dn_sk = NCONF_get_section(conf, "req_dn");
         if(!dn_sk) {
             fprintf(stderr, "Error reading config file for firmware device1\n");
-            return 1;   
+            return ERROR;   
         }
 
         // NOTE: look more into what this code is doing
@@ -330,7 +330,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Error signing CSR\n");
             X509_REQ_free(csr);
             NCONF_free(conf);
-            return 0;
+            return ERROR;
         }
         
     // STEP 8: Write CSR to file
@@ -339,7 +339,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Error opening file\n");
             X509_REQ_free(csr);
             NCONF_free(conf);
-            return 0;
+            return ERROR;
         }
         
         PEM_write_X509_REQ(csr_fp, csr);
@@ -370,7 +370,7 @@ int main(int argc, char *argv[]) {
 // Checking to make sure port and host IP was included when ran
     if (argc < 3) {
         fprintf(stderr, "Usage: %s hostname port\n", argv[0]);
-        exit(1);
+        return ERROR;
     }
 
     int portno = atoi(argv[2]);
@@ -379,13 +379,14 @@ int main(int argc, char *argv[]) {
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
         error("ERROR opening socket");
+        return ERROR;
     }
 
     // Get server address
     server = gethostbyname(argv[1]);
     if (server == NULL) {
         fprintf(stderr, "ERROR, no such host\n");
-        exit(1);
+        return ERROR;
     }
 
     // Set up address struct
@@ -401,7 +402,7 @@ int main(int argc, char *argv[]) {
     // Connect to server
     if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
         error("ERROR connecting to server on Device 1\n");
-        exit(1);
+        return ERROR;
     }
 
     printf("Connected to CA server\n");
@@ -410,7 +411,7 @@ int main(int argc, char *argv[]) {
     FILE *fp = fopen(csr_fp, "rb");
     if (!fp) {
         printf("Error opening csr file on device 1\n");
-        exit(1);
+        return ERROR;
     }
 
     size_t file_size = 0;
@@ -419,7 +420,8 @@ int main(int argc, char *argv[]) {
         file_size = ftell(fp);         // Get the current position (which is the file size in bytes)
         rewind(fp);         // Reset the file pointer to the beginning if further reading is needed
     } else {
-        perror("Error seeking to end of file");
+        perror("Error accessing the end of file in device1\n");
+        return ERROR;
     }
 
 
@@ -432,6 +434,7 @@ int main(int argc, char *argv[]) {
     int n = send(sockfd, &bytes_read, sizeof(bytes_read), 0);
     if (n < 0) {
         error("ERROR sending size to socket");
+        return ERROR;
     }
     ssize_t total_sent = 0;
 
@@ -443,6 +446,7 @@ int main(int argc, char *argv[]) {
         ssize_t n = send(sockfd, &buffer + total_sent, bytes_read - total_sent, 0);
         if (n <= 0) {
             error("Error sending csr to device 1 over the socket\n");
+            return ERROR;
         }
         total_sent += n;
     }
