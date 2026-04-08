@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
             return -1;
         }
 
-        FILE *ca_cert_fp = fopen("CA/certs/personal/ca_cert.pem", "w");
+        FILE *ca_cert_fp = fopen("CA/certs/personal/ca_cert.crt", "w");
         if (ca_cert_fp == NULL) {
             fprintf(stderr, "Failed to open CA cert file for writing\n");
             free_Pkey(pkey);
@@ -162,7 +162,7 @@ int main(int argc, char *argv[]) {
     // if user doens't provide 2 arguements
     if (argc < 2) {
         fprintf(stderr, "Port not provided. Program terminated\n");
-        exit(1);
+        return ERROR;
     }
 
     struct sockaddr_in serv_addr, cli_addr;
@@ -171,7 +171,8 @@ int main(int argc, char *argv[]) {
 
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
-        error("Error opening Socket.");
+        perror("Error opening Socket.");
+        return ERROR;
     }
 
     bzero((char *) &serv_addr, sizeof(serv_addr));
@@ -182,7 +183,8 @@ int main(int argc, char *argv[]) {
     serv_addr.sin_port = htons(portno);
 
     if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) {
-        error("Binding Fialed.");
+        perror("Binding Failed.");
+        return ERROR;
     }
 
     // 5 is the number of clients that can connect to the server at a time
@@ -192,23 +194,30 @@ int main(int argc, char *argv[]) {
 // Step 2: Loop a listen function to listen for csr request to the CA "port"
 
 // Eventually loop this so it connitnuously is listening and accepting clients connection and csr's
-
     int newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
     if (newsockfd < 0) {
-        error("Error on Accept");
+        printf("Error on Accepting socket connections");
+        return ERROR;
     }
 
     size_t expect_file_size = 0;
+    char *buffer = NULL;
 
     int val = recv(newsockfd, &expect_file_size, sizeof(expect_file_size), 0);
-    if (val <= 0) error("Failed to recieve size of expected data for the CA\n");
+    if (val <= 0) {
+        printf("Failed to recieve size of expected data for the CA\n");
+        return ERROR;
+    }
 
 
-    char buffer[expect_file_size];
+    buffer = malloc(expect_file_size);
     size_t total = 0;
     while (total < expect_file_size) {
         ssize_t n = recv(newsockfd, buffer + total, expect_file_size - total, 0);
-        if (n <= 0) error("recieve failed for the CA\n");
+        if (n <= 0) {
+            printf("recieve failed for the CA\n");
+            return ERROR;
+        }
         total += n;
     }
 
@@ -227,7 +236,8 @@ int main(int argc, char *argv[]) {
     // Writing csr to file to then conveert file to openSSL req struct to perform functions on
     FILE *csr_fp = fopen("CA/certs/signed/received.csr", "wb");
     if (!csr_fp) {
-        fprintf(stderr, "Error in CA trying to open csr file to write\n");
+        printf("Error in CA trying to open csr file to write\n");
+        free(buffer);
         return ERROR;
     }
     fwrite(buffer, 1, total, csr_fp);
@@ -235,21 +245,26 @@ int main(int argc, char *argv[]) {
 
     // Reading csr and putting it into a openSSL struct 
     FILE *read_csr_fp = fopen("CA/certs/signed/received.csr", "r");
+    if (!read_csr_fp) {
+        free(buffer);
+        return ERROR;
+    }
     X509_REQ *req = PEM_read_X509_REQ(read_csr_fp, NULL, NULL, NULL);
     fclose(read_csr_fp);
 
-    // Extract public key from the csr
-    EVP_PKEY *pubkey = X509_REQ_get_pubkey(req);
+    EVP_PKEY *pubkey = X509_REQ_get_pubkey(req);     // Extract public key from the csr
     // Checking Authenticity and Integrity 
     printf("Checking CSR's authenticity and integrity...\n");
     int check = X509_REQ_verify(req, pubkey); // Hashes the body and decrypts the signature using the public key and compares the two
     if (check < 0) {
         printf("Error during verification\n");
+        free(buffer);
         EVP_PKEY_free(pubkey);
         X509_REQ_free(req); 
         return ERROR;    
     } else if (check == 0) {
         printf("CSR signature is INVALID\n");
+        free(buffer);
         EVP_PKEY_free(pubkey);
         X509_REQ_free(req);
         return -ERROR;
@@ -270,10 +285,11 @@ int main(int argc, char *argv[]) {
 
     printf("Device info after reading CSR Org -> %s Com Name -> %s Ser Num -> %s\n", csr_organization, csr_common_name, csr_serial_num);
 
-    // Normally this would be a change to a SQL database instead of writing to a file
+    // Could be a changed to a SQL database instead of writing to a file
     FILE *db_fp = fopen("CA/database/approved_devices.txt", "r");
     if (!db_fp) {
         fprintf(stderr, "Error trying to open Approved Devices Data base\n");
+        free(buffer);
         close(newsockfd);
         close(sockfd);
         return ERROR;
@@ -281,6 +297,7 @@ int main(int argc, char *argv[]) {
     FILE *temp_db_fp = fopen("CA/database/temp_approved_devices.txt", "wb");
     if (!temp_db_fp) {
         fprintf(stderr, "Error trying to open TEMP Approved Devices Data base\n");
+        free(buffer);
         close(newsockfd);
         close(sockfd);
         return ERROR;
@@ -299,7 +316,7 @@ int main(int argc, char *argv[]) {
 
         // Check if device already been signed off then skip to next device in database
         if (db_buffer[0] == '1') {
-            fprintf(temp_db_fp, "%s\n", db_buffer);
+            fprintf(temp_db_fp, "%s", db_buffer);
             continue;
         }
         // Extracting each key word from the database for comparison
@@ -365,15 +382,14 @@ int main(int argc, char *argv[]) {
         
         char device_cert_dest[50] = "CA/certs/signed/";
         strcat(device_cert_dest, csr_common_name);
-        strcat(device_cert_dest, ".pem");
+        strcat(device_cert_dest, ".crt");
         printf("%s", device_cert_dest);
 
-        FILE *device_cert_fp = fopen("device_cert_dest", "w");
+        FILE *device_cert_fp = fopen(device_cert_dest, "w+b"); 
         if (!device_cert_fp) {
             fprintf(stderr, "Error opening device cert file to write cert\n");
             return ERROR;
         }
-
 
         FILE *priv_key_fp = fopen("CA/keys/ca_priv_rsa_key.pem", "r");
         if (!priv_key_fp) {
@@ -383,7 +399,7 @@ int main(int argc, char *argv[]) {
         EVP_PKEY *ca_priv_key = PEM_read_PrivateKey(priv_key_fp, NULL, NULL, NULL); // Get private key from key file
         fclose(priv_key_fp);
         
-        FILE *ca_cert_fp = fopen("CA/certs/personal/ca_cert.pem", "r");
+        FILE *ca_cert_fp = fopen("CA/certs/personal/ca_cert.crt", "r");
         if (!ca_cert_fp) {
             fprintf(stderr, "Error opening CA cert for signing the cert\n");
             return ERROR;           
@@ -407,21 +423,69 @@ int main(int argc, char *argv[]) {
 
         if (PEM_write_X509(device_cert_fp, cert) != 1) {
             fprintf(stderr, "Failed to write Device cert to file\n");
+            fclose(device_cert_fp);
             X509_free(cert);
             return ERROR;
         }
 
+        rewind(device_cert_fp);
+
+// possibly don't need this
+        buffer = NULL;
+        size_t file_size = 0;
+        X509_REQ_free(req);
+        char *temp = realloc(buffer, file_size);
+        if (!temp) {
+            fclose(device_cert_fp);
+            X509_free(cert);
+            free(buffer);
+            return ERROR;
+        } 
+        buffer = temp;
+
+        // Go to end of file to get size
+        if (fseek(device_cert_fp, 0, SEEK_END) == 0) {
+            file_size = ftell(device_cert_fp);         // Get the current position (which is the file size in bytes)
+            rewind(device_cert_fp);         // Reset the file pointer to the beginning if further reading is needed
+        } else {
+            perror("Error accessing the end of file in device1\n");
+            fclose(device_cert_fp);
+            X509_free(cert);
+            return ERROR;
+        }
+    
+        ssize_t bytes_read = fread(buffer, 1, file_size, device_cert_fp);
+        fclose(device_cert_fp);
+
+        // Sending size of expected data to device
+        int n = send(newsockfd, &bytes_read, sizeof(bytes_read), 0);
+        if (n < 0) {
+            error("ERROR sending size to socket");
+            return ERROR;
+        }
+        ssize_t total_sent = 0;
+        printf("Sending Certifacte back: \n");
+
+        // Send data/bytes until total size sent = the file size
+        while (total_sent < bytes_read) {
+            ssize_t n = send(newsockfd, &buffer + total_sent, bytes_read - total_sent, 0);
+            if (n <= 0) {
+                error("Error sending cert to device over the socket\n");
+                return ERROR;
+            }
+            total_sent += n;
+        }
+        free(buffer);
+
+        
 
     } else {
+        // NOTE if cert is not being sent back device should handle change in size whihc the while loop should handle
+        // Simple versino will happen if cert is not being sent back but isntead it's a small message saying csr not getting signed 
+
+
         printf("Device is not approved to be signed by the CA\n");
     }
-
-
-
-
-    X509_REQ_free(req);
-
-
 
 
     printf("\nClosed\n");

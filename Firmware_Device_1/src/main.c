@@ -401,7 +401,8 @@ int main(int argc, char *argv[]) {
 
     // Connect to server
     if (connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
-        error("ERROR connecting to server on Device 1\n");
+        printf("ERROR connecting to server on Device 1\n");    
+        close(sockfd);
         return ERROR;
     }
 
@@ -411,21 +412,23 @@ int main(int argc, char *argv[]) {
     FILE *fp = fopen(csr_fp, "rb");
     if (!fp) {
         printf("Error opening csr file on device 1\n");
+        close(sockfd);
         return ERROR;
     }
 
     size_t file_size = 0;
+    char *buffer = NULL;
+
     // Go to end of file to get size
     if (fseek(fp, 0, SEEK_END) == 0) {
         file_size = ftell(fp);         // Get the current position (which is the file size in bytes)
         rewind(fp);         // Reset the file pointer to the beginning if further reading is needed
     } else {
         perror("Error accessing the end of file in device1\n");
+        close(sockfd);
         return ERROR;
     }
-
-
-    char buffer[file_size];
+    buffer = malloc(file_size);
 
 // Getting content of csr file to send to CA
     ssize_t bytes_read = fread(buffer, 1, file_size, fp);
@@ -433,7 +436,8 @@ int main(int argc, char *argv[]) {
 // Sending size of expected data to CA
     int n = send(sockfd, &bytes_read, sizeof(bytes_read), 0);
     if (n < 0) {
-        error("ERROR sending size to socket");
+        printf("ERROR sending size to socket");
+        close(sockfd);
         return ERROR;
     }
     ssize_t total_sent = 0;
@@ -443,18 +447,67 @@ int main(int argc, char *argv[]) {
 
 // Send data/bytes until total size sent = the file size
     while (total_sent < bytes_read) {
-        ssize_t n = send(sockfd, &buffer + total_sent, bytes_read - total_sent, 0);
+        ssize_t n = send(sockfd, buffer + total_sent, bytes_read - total_sent, 0);
         if (n <= 0) {
-            error("Error sending csr to device 1 over the socket\n");
+            printf("Error sending csr to device 1 over the socket\n");
+            close(sockfd);
             return ERROR;
         }
         total_sent += n;
     }
 
+// Receiving Data from CA
+    size_t expect_file_size = 0;
+    int val = recv(sockfd, &expect_file_size, sizeof(expect_file_size), 0);
+    if (val == -1) {
+        perror("Failed to recieve size of expected data for the CA");
+        close(sockfd);
+        return ERROR;
+    }
+
+    char *temp = realloc(buffer, expect_file_size);
+    if (!temp) {
+        printf("Error Reallocating memory for buffer\n");
+        free(buffer);
+        close(sockfd);
+        return ERROR;
+    }
+    buffer = temp;
+
+    size_t total = 0;
+    while (total < expect_file_size) {
+        ssize_t n = recv(sockfd, buffer + total, expect_file_size - total, 0);
+        if (n <= 0) {
+            printf("recieve failed for the device\n");
+            close(sockfd);
+            return ERROR;
+        }
+        total += n;
+    }
+
+/* FIXME this should only run if it is a cert being recieved else don't run
+    * Have CA send a bool to detemrine if device will recieve cert or not
+        *  have a quick recieve of bool beefore getting full content and size of conent
+    * Check based off of size of content sent (Not a big fan of that)
+    
+    
+    * Got to the point where if it is accepted and signed the project can sign and send the cert
+    * next step is to handle if the cert is not signed and not sent back
+*/
+
+    FILE *cert_fp = fopen("Firmware_Device_1/certs/device1_cert.crt", "wb");
+    if (!cert_fp) {
+        printf("Error opening file to write device certificate\n");
+        return ERROR;
+    }
+    fwrite(buffer, 1, total, cert_fp);
+    fclose(cert_fp);
 
 
 
 
+    free(buffer);
+    printf("Closed\n");
     close(sockfd);
 
 
