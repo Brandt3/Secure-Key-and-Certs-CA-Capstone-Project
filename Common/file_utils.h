@@ -10,7 +10,7 @@
 
 void error(const char *msg);
 
-bool is_Key_Exist(const char *key_path);
+bool is_fp_Exist(const char *key_path);
 
 EVP_PKEY *generate_EVP_PKEY(const int size);
 

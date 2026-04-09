@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
     bool is_privkey_created = false;
 
 // If private key doesn't exist
-    if (!is_Key_Exist(key_name_priv)) {
+    if (!is_fp_Exist(key_name_priv)) {
         is_privkey_created = true;
 
     // Create pkey structure which stores public and private key along with other attirbutes
@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
         free_Pkey(pkey);
  
 //  Check if public key fp exist / is created
-    } else if(!is_Key_Exist(key_name_pub)) { //If there is a private key but not public key create public key from already created private key
+    } else if(!is_fp_Exist(key_name_pub)) { //If there is a private key but not public key create public key from already created private key
         FILE *priv_key_fp = fopen("Firmware_Device_1/keys/firmware1_priv_rsa_key.pem", "r");
         if (!priv_key_fp) {
             fprintf(stderr, "Error opening private key file for device1 for public key creation\n");
@@ -142,7 +142,7 @@ int main(int argc, char *argv[]) {
     const char csr_fp[] = "Firmware_Device_1/certs/device1.csr";
 
     // If csr file doesn't exist create it
-    if (access(csr_fp, F_OK) != 0) {
+    if (!is_fp_Exist(csr_fp)) {
         FILE *priv_key_fp = fopen("Firmware_Device_1/keys/firmware1_priv_rsa_key.pem", "r");
         if (!priv_key_fp) {
             fprintf(stderr, "Error opening private key file for device1\n");
@@ -456,64 +456,134 @@ int main(int argc, char *argv[]) {
         total_sent += n;
     }
 
-// Receiving Data from CA
-    size_t expect_file_size = 0;
-    int val = recv(sockfd, &expect_file_size, sizeof(expect_file_size), 0);
-    if (val == -1) {
-        perror("Failed to recieve size of expected data for the CA");
+// === Receiving Data from CA ===
+
+    // Receiving if csr was signed or not from CA
+
+    const char *expected_cert_fp = "Firmware_Device_1/certs/device1_cert.crt";
+
+// FIXME this code has not been tested yet
+    bool is_cert_signed = false;
+    int num = recv(sockfd, &is_cert_signed, sizeof(is_cert_signed), 0);
+    if (num == -1) {
+        printf("Failed to recieve boolean check from CA\n");
         close(sockfd);
         return ERROR;
     }
-
-    char *temp = realloc(buffer, expect_file_size);
-    if (!temp) {
-        printf("Error Reallocating memory for buffer\n");
-        free(buffer);
-        close(sockfd);
-        return ERROR;
-    }
-    buffer = temp;
-
-    size_t total = 0;
-    while (total < expect_file_size) {
-        ssize_t n = recv(sockfd, buffer + total, expect_file_size - total, 0);
-        if (n <= 0) {
-            printf("recieve failed for the device\n");
+    // If cert is signed then prepare to recieve cert
+    if (is_cert_signed) {
+        size_t expect_file_size = 0;
+        int val = recv(sockfd, &expect_file_size, sizeof(expect_file_size), 0);
+        if (val == -1) {
+            perror("Failed to recieve size of expected data for the CA");
             close(sockfd);
             return ERROR;
         }
-        total += n;
+
+        char *temp = realloc(buffer, expect_file_size);
+        if (!temp) {
+            printf("Error Reallocating memory for buffer\n");
+            free(buffer);
+            close(sockfd);
+            return ERROR;
+        }
+        buffer = temp;
+
+        size_t total = 0;
+        while (total < expect_file_size) {
+            ssize_t n = recv(sockfd, buffer + total, expect_file_size - total, 0);
+            if (n <= 0) {
+                printf("recieve failed for the device\n");
+                close(sockfd);
+                return ERROR;
+            }
+            total += n;
+        }
+
+        FILE *cert_fp = fopen("Firmware_Device_1/certs/device1_cert.crt", "wb");
+        if (!cert_fp) {
+            printf("Error opening file to write device certificate\n");
+            close(sockfd);
+            return ERROR;
+        }
+        fwrite(buffer, 1, total, cert_fp);
+        fclose(cert_fp);
+    // FIXME This is a function that needs to be updated
+    } else if (!is_fp_Exist(expected_cert_fp)) {
+        printf("CSR was not signed by cert. I will sign it myself\n");
+
+        FILE *csr_fp = fopen("Firmware_Device_1/certs/device1.csr", "r");
+        if (!csr_fp) {
+            perror("CSR open failed");
+            close(sockfd);
+            return ERROR;
+        }
+
+        // 1. Load CSR
+        X509_REQ *req = PEM_read_X509_REQ(csr_fp, NULL, NULL, NULL);
+        fclose(csr_fp);
+
+        if (!req) {
+            printf("Failed to read CSR for self signing\n");
+            close(sockfd);
+            return ERROR;
+        }
+
+        // 2. Extract public key from CSR
+        EVP_PKEY *pubkey = X509_REQ_get_pubkey(req);
+
+        // 3. Load private key (used to sign cert)
+        FILE *key_fp = fopen("Firmware_Device_1/keys/firmware1_priv_rsa_key.pem", "r");
+        EVP_PKEY *device_pivkey = PEM_read_PrivateKey(key_fp, NULL, NULL, NULL);
+        fclose(key_fp);
+
+        if (!device_pivkey) {
+            printf("Failed to load private key for self signing\n");
+            close(sockfd);
+            return ERROR;
+        }
+
+        // 4. Create certificate
+        X509 *cert = X509_new();
+        X509_set_version(cert, 2);         // Set version (v3 = 2)
+        ASN1_INTEGER_set(X509_get_serialNumber(cert), 1);         // Serial number
+        X509_gmtime_adj(X509_get_notBefore(cert), 0);         // Validity
+        X509_gmtime_adj(X509_get_notAfter(cert), 31536000L); // 1 year
+
+        // 5. Set subject from CSR
+        X509_set_subject_name(cert, X509_REQ_get_subject_name(req));
+
+        // 6. Self-signed → issuer = subject
+        X509_set_issuer_name(cert, X509_REQ_get_subject_name(req));
+
+        // 7. Set public key
+        X509_set_pubkey(cert, pubkey);
+
+        // 8. Sign certificate
+        if (!X509_sign(cert, device_pivkey, EVP_sha256())) {
+            printf("Signing failed\n");
+            close(sockfd);
+            return ERROR;
+        }
+
+        // 9. Write certificate to file
+        FILE *out = fopen("Firmware_Device_1/certs/device1_cert.crt", "w");
+        PEM_write_X509(out, cert);
+        fclose(out);
+
+        printf("Certificate successfully self signed and created!\n");
+
+        // Cleanup
+        X509_REQ_free(req);
+        EVP_PKEY_free(pubkey);
+        EVP_PKEY_free(device_pivkey);
+        X509_free(cert);
+
     }
-
-/* FIXME this should only run if it is a cert being recieved else don't run
-    * Have CA send a bool to detemrine if device will recieve cert or not
-        *  have a quick recieve of bool beefore getting full content and size of conent
-    * Check based off of size of content sent (Not a big fan of that)
-    
-    
-    * Got to the point where if it is accepted and signed the project can sign and send the cert
-    * next step is to handle if the cert is not signed and not sent back
-*/
-
-    FILE *cert_fp = fopen("Firmware_Device_1/certs/device1_cert.crt", "wb");
-    if (!cert_fp) {
-        printf("Error opening file to write device certificate\n");
-        return ERROR;
-    }
-    fwrite(buffer, 1, total, cert_fp);
-    fclose(cert_fp);
-
-
-
 
     free(buffer);
     printf("Closed\n");
     close(sockfd);
-
-
-
-
-
 
     // 4. If it has a signed cert send it to the Power Hypervisor to try and connect
 

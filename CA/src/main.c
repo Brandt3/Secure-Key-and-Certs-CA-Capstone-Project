@@ -376,14 +376,19 @@ int main(int argc, char *argv[]) {
     }
 
     // based off is_device_approved then sign cert and send it back
+    ssize_t sent = send(newsockfd, &is_device_approved, sizeof(is_device_approved), 0);
+    if (sent <= 0) {
+        printf("Failed to send boolean check to device\n");
+        return ERROR;
+    }
 
     if (is_device_approved) {
         printf("CSR meets all requirements I will now sign the CSR and send a Certificate back to you...\n");
         
-        char device_cert_dest[50] = "CA/certs/signed/";
+        char device_cert_dest[60] = "CA/certs/signed/";
         strcat(device_cert_dest, csr_common_name);
         strcat(device_cert_dest, ".crt");
-        printf("%s", device_cert_dest);
+        printf("%s\n", device_cert_dest);
 
         FILE *device_cert_fp = fopen(device_cert_dest, "w+b"); 
         if (!device_cert_fp) {
@@ -420,11 +425,14 @@ int main(int argc, char *argv[]) {
         // Signing cert that contains info about the csr, device, and CA
         X509_sign(cert, ca_priv_key, EVP_sha256());
         EVP_PKEY_free(ca_priv_key);
+        X509_REQ_free(req); 
+
 
         if (PEM_write_X509(device_cert_fp, cert) != 1) {
             fprintf(stderr, "Failed to write Device cert to file\n");
             fclose(device_cert_fp);
             X509_free(cert);
+            X509_REQ_free(req); 
             return ERROR;
         }
 
@@ -433,7 +441,6 @@ int main(int argc, char *argv[]) {
 // possibly don't need this
         buffer = NULL;
         size_t file_size = 0;
-        X509_REQ_free(req);
         char *temp = realloc(buffer, file_size);
         if (!temp) {
             fclose(device_cert_fp);
@@ -468,14 +475,13 @@ int main(int argc, char *argv[]) {
 
         // Send data/bytes until total size sent = the file size
         while (total_sent < bytes_read) {
-            ssize_t n = send(newsockfd, &buffer + total_sent, bytes_read - total_sent, 0);
+            ssize_t n = send(newsockfd, buffer + total_sent, bytes_read - total_sent, 0);
             if (n <= 0) {
                 error("Error sending cert to device over the socket\n");
                 return ERROR;
             }
             total_sent += n;
         }
-        free(buffer);
 
         
 
@@ -489,6 +495,8 @@ int main(int argc, char *argv[]) {
 
 
     printf("\nClosed\n");
+    free(buffer);
+    X509_REQ_free(req); 
     close(newsockfd);
     close(sockfd);
 

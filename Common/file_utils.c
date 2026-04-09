@@ -24,7 +24,7 @@ void error(const char *msg) {
 }
 
 // ==== Check if key is already created with file name ====
-bool is_Key_Exist(const char *key_path) {
+bool is_fp_Exist(const char *key_path) {
     if (access(key_path, F_OK) == 0) {
         return true;
     } else {
