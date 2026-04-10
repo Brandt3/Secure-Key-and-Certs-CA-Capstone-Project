@@ -42,7 +42,7 @@ int main(int argc, char *argv[]) {
 
     // If private key doesn't exist it is created and also Power Sever CA public key must be updated
         // But the CA public key should already be created and stored in the TPM of the Power Sever
-    if (!is_Key_Exist(key_name_priv)) {
+    if (!is_fp_Exist(key_name_priv)) {
     // Create pkey structure which stores public and private key along with other attirbutes
         EVP_PKEY *pkey = generate_EVP_PKEY(key_size);
 
@@ -441,15 +441,6 @@ int main(int argc, char *argv[]) {
 // possibly don't need this
         buffer = NULL;
         size_t file_size = 0;
-        char *temp = realloc(buffer, file_size);
-        if (!temp) {
-            fclose(device_cert_fp);
-            X509_free(cert);
-            free(buffer);
-            return ERROR;
-        } 
-        buffer = temp;
-
         // Go to end of file to get size
         if (fseek(device_cert_fp, 0, SEEK_END) == 0) {
             file_size = ftell(device_cert_fp);         // Get the current position (which is the file size in bytes)
@@ -460,6 +451,15 @@ int main(int argc, char *argv[]) {
             X509_free(cert);
             return ERROR;
         }
+        
+        char *temp = realloc(buffer, file_size);
+        if (!temp) {
+            fclose(device_cert_fp);
+            X509_free(cert);
+            free(buffer);
+            return ERROR;
+        } 
+        buffer = temp;
     
         ssize_t bytes_read = fread(buffer, 1, file_size, device_cert_fp);
         fclose(device_cert_fp);

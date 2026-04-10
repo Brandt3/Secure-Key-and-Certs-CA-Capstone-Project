@@ -1,19 +1,16 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <string.h>
 #include <stdbool.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <unistd.h> // library to check existing files and for read, write, and close functions for socket programming
 #include "file_utils.h"
 
-
-// Use mTLS for connections to server from device so it can’t connect unless it has a trusted cert
-// Your hypervisor should verify:
-
 // X509_verify(cert, ca_pubkey);
-
 // This will FAIL for self-signed device certs
 
 int main(int argc, char *argv[]) {
@@ -49,8 +46,42 @@ int main(int argc, char *argv[]) {
     listen(sockfd, 5);
     clilen = sizeof(cli_addr);
 
-    // 192
+// Step 2: Loop a listen function to listen for connection request to the server "port"
 
+    // Eventually loop this so it connitnuously is listening and checking clients connection
+    int newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+    if (newsockfd < 0) {
+        printf("Error on Accepting socket connections");
+        return ERROR;
+    }
+
+    // Recieve size of Cert that is expected to be received
+    size_t expect_file_size = 0;
+    char *buffer = NULL;
+
+    int val = recv(newsockfd, &expect_file_size, sizeof(expect_file_size), 0);
+    if (val <= 0) {
+        printf("Failed to recieve size of expected data for the CA\n");
+        return ERROR;
+    }
+
+
+    buffer = malloc(expect_file_size);
+    size_t total = 0;
+    while (total < expect_file_size) {
+        ssize_t n = recv(newsockfd, buffer + total, expect_file_size - total, 0);
+        if (n <= 0) {
+            printf("recieve failed for the Power Hypervisor\n");
+            return ERROR;
+        }
+        total += n;
+    }
+
+
+
+    free(buffer);
+    close(newsockfd);
+    close(sockfd);
 
 
 

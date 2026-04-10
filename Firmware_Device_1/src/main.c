@@ -52,7 +52,7 @@ Test Cases:
     Previously everything -> Nothing extra created GOOD
 */
 
-// Needs file, server IP address (loopback for internal, port number)
+// Needs file, CA server IP address (loopback for internal), CA port number, Power Hyperviosr IP address, Power Hyperviosr port number
 int main(int argc, char *argv[]) {
 
     // In a real situation Steps 1 and 2 already have the info stored on a secure flash (created at manufacturing) 
@@ -60,7 +60,7 @@ int main(int argc, char *argv[]) {
 
     // Note keys are NEVER regenerated each time power is on 
 
-    // 1. Upon "Power On" Check if there are keys created if not Create Private and Public key (RSA or EC)
+// 1. Upon "Power On" Check if there are keys created if not Create Private and Public key (RSA or EC)
         // Store Key in the keys file
         // Note Keys persist across reboots (try to emulate that here as well so only create the keys once)
 
@@ -132,12 +132,12 @@ int main(int argc, char *argv[]) {
 
 
 
-    // 2. Create CSR and request user for CSR info plus exstention
-        // Store CSR in certs file
-        // Input all CSR info required / could also pull info from a config file
-        // Real world the device read this info from a NVRAM/secure storage
+// 2. Create CSR and request user for CSR info plus exstention
+    // Store CSR in certs file
+    // Input all CSR info required / could also pull info from a config file
+    // Real world the device read this info from a NVRAM/secure storage
 
-        // Creating variable to store config file
+    // Creating variable to store config file
 
     const char csr_fp[] = "Firmware_Device_1/certs/device1.csr";
 
@@ -360,14 +360,14 @@ int main(int argc, char *argv[]) {
 
     
 
-    // 3. Send CSR to CA to see if it will get signed
-        // If it does store cert in certs file and delete CSR (Privode a status update in the terminal for each device)
-        // If reject display message / echo "Device number could not get signed as it does not meet requirements therefore it can not try and connect to the Power Hypervisor"
-        // Can look into ssl_connect, ssl_write, ssl_read which is used to authenicate the server trying to connect to
+// 3. Send CSR to CA to see if it will get signed
+    // If it does store cert in certs file and delete CSR (Privode a status update in the terminal for each device)
+    // If reject display message / echo "Device number could not get signed as it does not meet requirements therefore it can not try and connect to the Power Hypervisor"
+    // Can look into ssl_connect, ssl_write, ssl_read which is used to authenicate the server trying to connect to
     struct sockaddr_in serv_addr;
     struct hostent *server;
 
-// Checking to make sure port and host IP was included when ran
+    // Checking to make sure port and host IP was included when ran
     if (argc < 3) {
         fprintf(stderr, "Usage: %s hostname port\n", argv[0]);
         return ERROR;
@@ -408,7 +408,7 @@ int main(int argc, char *argv[]) {
 
     printf("Connected to CA server\n");
 
-// Opening csr file to get file size and send
+    // Opening csr file to get file size and send
     FILE *fp = fopen(csr_fp, "rb");
     if (!fp) {
         printf("Error opening csr file on device 1\n");
@@ -430,10 +430,10 @@ int main(int argc, char *argv[]) {
     }
     buffer = malloc(file_size);
 
-// Getting content of csr file to send to CA
+    // Getting content of csr file to send to CA
     ssize_t bytes_read = fread(buffer, 1, file_size, fp);
 
-// Sending size of expected data to CA
+    // Sending size of expected data to CA
     int n = send(sockfd, &bytes_read, sizeof(bytes_read), 0);
     if (n < 0) {
         printf("ERROR sending size to socket");
@@ -445,7 +445,7 @@ int main(int argc, char *argv[]) {
     // ---- SEND DATA (CSR SIMULATION) ----
     printf("Sending CSR for signing: \n");
 
-// Send data/bytes until total size sent = the file size
+    // Send data/bytes until total size sent = the file size
     while (total_sent < bytes_read) {
         ssize_t n = send(sockfd, buffer + total_sent, bytes_read - total_sent, 0);
         if (n <= 0) {
@@ -585,7 +585,53 @@ int main(int argc, char *argv[]) {
     printf("Closed\n");
     close(sockfd);
 
-    // 4. If it has a signed cert send it to the Power Hypervisor to try and connect
+
+
+// 4. If it has a signed cert send it to the Power Hypervisor to try and connect
+
+    struct sockaddr_in power_serv_addr;
+    struct hostent *power_server;
+
+    // Checking to make sure port and host IP was included when ran
+    if (argc < 5) {
+        fprintf(stderr, "Usage: %s hostname port\n", argv[0]);
+        return ERROR;
+    }
+
+    int server_portno = atoi(argv[4]);
+
+    // Create socket
+    int server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_sockfd < 0) {
+        error("ERROR opening socket");
+        return ERROR;
+    }
+
+    // Get server address
+    power_server = gethostbyname(argv[3]);
+    if (power_server == NULL) {
+        fprintf(stderr, "ERROR, no such host\n");
+        return ERROR;
+    }
+
+    // Set up address struct
+    bzero((char *) &power_serv_addr, sizeof(power_serv_addr));
+    power_serv_addr.sin_family = AF_INET;
+
+    bcopy((char *)power_server->h_addr_list[0],
+          (char *)&power_serv_addr.sin_addr.s_addr,
+          power_server->h_length);
+
+    power_serv_addr.sin_port = htons(server_portno);
+
+    // Connect to server
+    if (connect(server_sockfd, (struct sockaddr *)&power_serv_addr, sizeof(power_serv_addr)) < 0) {
+        printf("ERROR connecting to server on Device 1\n");    
+        close(sockfd);
+        return ERROR;
+    }
+
+    printf("Connected to Power Hypervisor\n");
 
     // 5. If cert is trusted and makes a secure SSL/TLS connection then perform a task or communicate with the Power Hypervisor
     
