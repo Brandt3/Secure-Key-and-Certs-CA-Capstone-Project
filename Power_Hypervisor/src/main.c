@@ -56,12 +56,13 @@ int main(int argc, char *argv[]) {
     }
 
     // Recieve size of Cert that is expected to be received
+// ===== ENDED HERE =====
     size_t expect_file_size = 0;
     char *buffer = NULL;
 
     int val = recv(newsockfd, &expect_file_size, sizeof(expect_file_size), 0);
     if (val <= 0) {
-        printf("Failed to recieve size of expected data for the CA\n");
+        printf("Failed to recieve size of expected data for the validation\n");
         return ERROR;
     }
 

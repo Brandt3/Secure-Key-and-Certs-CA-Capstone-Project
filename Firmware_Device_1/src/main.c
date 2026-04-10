@@ -582,7 +582,7 @@ int main(int argc, char *argv[]) {
     }
 
     free(buffer);
-    printf("Closed\n");
+    printf("Closed CA Socket Connection\n");
     close(sockfd);
 
 
@@ -630,8 +630,15 @@ int main(int argc, char *argv[]) {
         close(sockfd);
         return ERROR;
     }
-
     printf("Connected to Power Hypervisor\n");
+
+    // Send Cert to try and make a trusted connection with the Power Hyperviosr
+    
+
+
+
+    close(server_sockfd);
+
 
     // 5. If cert is trusted and makes a secure SSL/TLS connection then perform a task or communicate with the Power Hypervisor
     
