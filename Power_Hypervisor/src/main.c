@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -8,12 +9,29 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <unistd.h> // library to check existing files and for read, write, and close functions for socket programming
+#include <openssl/pem.h> 
+#include <openssl/evp.h>
+#include <openssl/err.h>
+#include <openssl/x509.h>
+#include <openssl/conf.h>
+#include <signal.h> 
 #include "file_utils.h"
 
-// X509_verify(cert, ca_pubkey);
-// This will FAIL for self-signed device certs
+volatile sig_atomic_t keep_running = 1; // Global flag for exiting "server loop"
+
+// Handler
+void handle_sigint(int sig) {
+    (void)sig;
+    keep_running = 0;
+}
 
 int main(int argc, char *argv[]) {
+
+    struct sigaction sa;
+    sa.sa_handler = handle_sigint;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0; // Explicitly no SA_RESTART
+    sigaction(SIGINT, &sa, NULL);
 
     if (argc < 2) {
         fprintf(stderr, "Port not provided. Program terminated\n");
@@ -30,7 +48,7 @@ int main(int argc, char *argv[]) {
         return ERROR;
     }
 
-    bzero((char *) &serv_addr, sizeof(serv_addr));
+    memset(&serv_addr, 0, sizeof(serv_addr));
     int portno = atoi(argv[1]);
 
     serv_addr.sin_family = AF_INET;
@@ -41,52 +59,135 @@ int main(int argc, char *argv[]) {
         perror("Binding Failed.");
         return ERROR;
     }
-
     // 5 is the number of clients that can connect to the server at a time
     listen(sockfd, 5);
     clilen = sizeof(cli_addr);
 
-// Loop a listen function to listen for connection request to the server "port"
-
-    // Eventually loop this so it connitnuously is listening and checking clients connection
-    int newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
-    if (newsockfd < 0) {
-        printf("Error on Accepting socket connections");
-        return ERROR;
-    }
-
-    // Recieve size of Cert that is expected to be received
-// ===== ENDED HERE =====
-    size_t expect_file_size = 0;
     char *buffer = NULL;
+    buffer = malloc(10);
 
-    int val = recv(newsockfd, &expect_file_size, sizeof(expect_file_size), 0);
-    if (val <= 0) {
-        printf("Failed to recieve size of expected data for the validation\n");
-        return ERROR;
-    }
+    while (keep_running) {
+        int newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+        if (newsockfd < 0) {
+            if(keep_running == 0) break; //Exit loop after Ctrl+C
+            if (errno == EINTR) continue; // interrupted but not a shutdown signal 
+            printf("Error on Accepting socket connections");
+            continue;;
+        }
+
+        // Recieve size of Cert that is expected to be received
+    // ===== ENDED HERE =====
+        size_t expect_file_size = 0;
+
+        int val = recv(newsockfd, &expect_file_size, sizeof(expect_file_size), 0);
+        if (val <= 0) {
+            printf("Failed to recieve size of expected data for the validation. Disconnecting\n");
+            continue;;
+        }
 
 
-    buffer = malloc(expect_file_size);
-    size_t total = 0;
-    printf("%ld", expect_file_size);
-    while (total < expect_file_size) {
-        ssize_t n = recv(newsockfd, buffer + total, expect_file_size - total, 0);
-        if (n <= -1) {
-            printf("recieve failed for the Power Hypervisor\n");
+        char *temp = realloc(buffer, expect_file_size);
+        if (!temp) {
+            printf("Failed to realloc buffer memory\n");
+            close(newsockfd);
+            close(sockfd);
             return ERROR;
         }
-        total += n;
+        buffer = temp;
+        size_t total = 0;
+        printf("%ld", expect_file_size);
+        while (total < expect_file_size) {
+            ssize_t n = recv(newsockfd, buffer + total, expect_file_size - total, 0);
+            if (n <= -1) {
+                printf("recieve failed for the Power Hypervisor\n");
+                close(newsockfd);
+                close(sockfd);
+                return ERROR;
+            }
+            total += n;
+        }
+        printf("Received device cert and checking SSL/TSL validation\n");
+        buffer[expect_file_size] = '\0';
+
+        FILE *ca_cert_fp = fopen("Power_Hypervisor/trusted_ca/ca_cert.crt", "r");
+        if (!ca_cert_fp) {
+            printf("Failed to open trusted CA Cert\n");
+            close(newsockfd);
+            break;
+        }
+
+        X509 *cert = PEM_read_X509(ca_cert_fp, NULL, NULL, NULL);
+        fclose(ca_cert_fp);
+        EVP_PKEY *ca_pubkey = X509_get_pubkey(cert);
+        if (!ca_pubkey) {
+            printf("Failed to get public key from CA cert\n");
+            X509_free(cert);
+            EVP_PKEY_free(ca_pubkey);
+            close(newsockfd);
+            break;
+        }
+
+    // Perform SSL/TLS validations
+
+        /* For Future adition to progress could lookingot using this instead to check chain of trust as well
+                    X509_STORE *store = X509_STORE_new();
+                    X509_STORE_add_cert(store, ca_cert);
+
+                    X509_STORE_CTX *ctx = X509_STORE_CTX_new();
+                    X509_STORE_CTX_init(ctx, store, device_cert, NULL);
+
+                    int result = X509_verify_cert(ctx);
+        
+        */
+
+
+        // #1 Verify Cert has the trusted CA's signature
+        int n = X509_verify(cert, ca_pubkey);
+        if (n == 0) {
+            printf("CERTIFICATE NOT VALID: Certs signature is not from a trusted CA therefore the device is not trusted. Disconnection socket connection\n");
+            close(newsockfd); // Disconnect Deivce that's not trusted
+            continue;
+        } else if (n < 0) {
+            printf("Error verifying certs signature\n");
+            close(newsockfd);
+            X509_free(cert);
+            EVP_PKEY_free(ca_pubkey);
+            continue;
+        }
+
+        // #2 Check cert experation date
+        const ASN1_TIME *not_before = X509_get0_notBefore(cert);
+        const ASN1_TIME *not_after  = X509_get0_notAfter(cert);
+        int day = 0;
+        int sec = 0;
+
+        // Check if cert is not yet valid
+        if (ASN1_TIME_diff(&day, &sec, NULL, not_before) == 1) {
+            if (day < 0 || sec < 0) {
+                printf("CERTIFICATE NOT VALID: Certs is not valid yet (to soon). Disconnecting socket connection\n");
+                close(newsockfd);
+                X509_free(cert);
+                EVP_PKEY_free(ca_pubkey);
+                continue;
+            }
+        }
+
+        // Check if expired
+        if (ASN1_TIME_diff(&day, &sec, NULL, not_after) == 1) {
+            if (day > 0 || sec > 0) {
+                printf("CERTIFICATE NOT VALID: Certs is expired. Disconnecting socket connection\n");
+                close(newsockfd);
+                X509_free(cert);
+                EVP_PKEY_free(ca_pubkey);
+                continue;
+            }
+        }
+        printf("CERTIFICATE TRUSTED: You can now perform actions with the Power Hyperviosr\n");
     }
-    printf("Received device cert and checking SSL/TSL validation\n");
-    
-    buffer[expect_file_size] = '\0';
-    printf("%s", buffer);
 
 
-    printf("closed\n");
+    printf("Server shutting down\n");
     free(buffer);
-    close(newsockfd);
     close(sockfd);
 
 
