@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
     listen(sockfd, 5);
     clilen = sizeof(cli_addr);
 
-// Step 2: Loop a listen function to listen for connection request to the server "port"
+// Loop a listen function to listen for connection request to the server "port"
 
     // Eventually loop this so it connitnuously is listening and checking clients connection
     int newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
@@ -69,17 +69,22 @@ int main(int argc, char *argv[]) {
 
     buffer = malloc(expect_file_size);
     size_t total = 0;
+    printf("%ld", expect_file_size);
     while (total < expect_file_size) {
         ssize_t n = recv(newsockfd, buffer + total, expect_file_size - total, 0);
-        if (n <= 0) {
+        if (n <= -1) {
             printf("recieve failed for the Power Hypervisor\n");
             return ERROR;
         }
         total += n;
     }
+    printf("Received device cert and checking SSL/TSL validation\n");
+    
+    buffer[expect_file_size] = '\0';
+    printf("%s", buffer);
 
 
-
+    printf("closed\n");
     free(buffer);
     close(newsockfd);
     close(sockfd);

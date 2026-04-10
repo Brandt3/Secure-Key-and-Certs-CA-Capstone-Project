@@ -464,6 +464,7 @@ int main(int argc, char *argv[]) {
 
 // FIXME this code has not been tested yet
     bool is_cert_signed = false;
+    size_t expect_file_size = 0;
     int num = recv(sockfd, &is_cert_signed, sizeof(is_cert_signed), 0);
     if (num == -1) {
         printf("Failed to recieve boolean check from CA\n");
@@ -472,7 +473,6 @@ int main(int argc, char *argv[]) {
     }
     // If cert is signed then prepare to recieve cert
     if (is_cert_signed) {
-        size_t expect_file_size = 0;
         int val = recv(sockfd, &expect_file_size, sizeof(expect_file_size), 0);
         if (val == -1) {
             perror("Failed to recieve size of expected data for the CA");
@@ -580,8 +580,6 @@ int main(int argc, char *argv[]) {
         X509_free(cert);
 
     }
-
-    free(buffer);
     printf("Closed CA Socket Connection\n");
     close(sockfd);
 
@@ -627,16 +625,67 @@ int main(int argc, char *argv[]) {
     // Connect to server
     if (connect(server_sockfd, (struct sockaddr *)&power_serv_addr, sizeof(power_serv_addr)) < 0) {
         printf("ERROR connecting to server on Device 1\n");    
-        close(sockfd);
+        close(server_sockfd);
         return ERROR;
     }
     printf("Connected to Power Hypervisor\n");
+    
+    // Sending size of expected data to device
+    file_size = 0;
 
+    FILE *cert_fp = fopen("Firmware_Device_1/certs/device1_cert.crt", "r");
+    if (!cert_fp) {
+            printf("Failed opening cert file to send to Power Hypervisor\n");
+            close(server_sockfd);
+            free(buffer);
+            return ERROR;
+        }
+
+    if (fseek(cert_fp, 0, SEEK_END) == 0) {
+        file_size = ftell(cert_fp);         // Get the current position (which is the file size in bytes)
+        rewind(cert_fp);         // Reset the file pointer to the beginning if further reading is needed
+    } else {
+        perror("Error accessing the end of file in device1\n");
+        fclose(cert_fp);
+        return ERROR;
+    }
+
+    char *temp = realloc(buffer, file_size);
+    if (!temp) {
+        printf("Error reallocating buffer for Power Hypervisor\n");
+        close(server_sockfd);
+        free(buffer);
+        return ERROR;
+    }
+    buffer = temp;
+
+    n = send(server_sockfd, &file_size, sizeof(file_size), 0);
+    if (n < 0) {
+        error("ERROR sending size to Power Hypervisor\n");
+        return ERROR;
+    }
+    printf("%ld", file_size);
+   
+    // Read cert into buffer    
+    bytes_read = fread(buffer, 1, file_size, cert_fp); // writting file into buffer
+    fclose(cert_fp);
+
+    size_t amount_sent = 0;
+    printf("Sending Certifacte to Power Hypervisor: \n");
     // Send Cert to try and make a trusted connection with the Power Hyperviosr
+    while (amount_sent < file_size) {
+        ssize_t n = send(server_sockfd, buffer + amount_sent, bytes_read - amount_sent, 0);
+        if (n <= 0) {
+            error("Error sending cert to Power Hypervisor over the socket\n");
+            return ERROR;
+        }
+        amount_sent += n;
+    }
+
     
 
-
-
+    printf("closed\n");
+    free(buffer);
     close(server_sockfd);
 
 
