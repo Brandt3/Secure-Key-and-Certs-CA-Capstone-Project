@@ -7,7 +7,6 @@
 #include <openssl/err.h>
 #include <openssl/x509.h>
 #include <openssl/conf.h>
-
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
@@ -138,7 +137,6 @@ int main(int argc, char *argv[]) {
     // Real world the device read this info from a NVRAM/secure storage
 
     // Creating variable to store config file
-
     const char csr_fp[] = "Firmware_Device_1/certs/device1.csr";
 
     // If csr file doesn't exist create it
@@ -390,7 +388,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Set up address struct
-    bzero((char *) &serv_addr, sizeof(serv_addr));
+    memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
 
     bcopy((char *)server->h_addr_list[0],
@@ -436,7 +434,7 @@ int main(int argc, char *argv[]) {
     // Sending size of expected data to CA
     int n = send(sockfd, &bytes_read, sizeof(bytes_read), 0);
     if (n < 0) {
-        printf("ERROR sending size to socket");
+        printf("ERROR sending size to socket\n");
         close(sockfd);
         return ERROR;
     }
@@ -547,7 +545,7 @@ int main(int argc, char *argv[]) {
         X509 *cert = X509_new();
         X509_set_version(cert, 2);         // Set version (v3 = 2)
         ASN1_INTEGER_set(X509_get_serialNumber(cert), 1);         // Serial number
-        X509_gmtime_adj(X509_get_notBefore(cert), 0);         // Validity
+        X509_gmtime_adj(X509_get_notBefore(cert), -60);         // Validity
         X509_gmtime_adj(X509_get_notAfter(cert), 31536000L); // 1 year
 
         // 5. Set subject from CSR
@@ -613,7 +611,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Set up address struct
-    bzero((char *) &power_serv_addr, sizeof(power_serv_addr));
+    memset(&power_serv_addr, 0, sizeof(power_serv_addr));
     power_serv_addr.sin_family = AF_INET;
 
     bcopy((char *)power_server->h_addr_list[0],
@@ -664,7 +662,6 @@ int main(int argc, char *argv[]) {
         error("ERROR sending size to Power Hypervisor\n");
         return ERROR;
     }
-    printf("%ld", file_size);
    
     // Read cert into buffer    
     bytes_read = fread(buffer, 1, file_size, cert_fp); // writting file into buffer

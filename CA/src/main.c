@@ -1,7 +1,9 @@
+#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <signal.h> 
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -31,9 +33,25 @@
 
 */
 
+volatile sig_atomic_t keep_running = 1; // Global flag for exiting "server loop"
+
+// Handler
+void handle_sigint(int sig) {
+    (void)sig;
+    keep_running = 0;
+}
+
 // Run program with 2 arguments required (File name and port) Ex. ./test_program 9090
 int main(int argc, char *argv[]) {
-// Step 0: Create pubulic key, private key, and cert for CA only one time
+
+    // Sigaction listens for signal that will return a value to end the "server loop" and properly clean up everything
+    struct sigaction sa;
+    sa.sa_handler = handle_sigint;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0; // Explicitly no SA_RESTART
+    sigaction(SIGINT, &sa, NULL);
+
+// Step 1: Create pubulic key, private key, and cert for CA only one time
     const char key_name_priv[] = "CA/keys/ca_priv_rsa_key.pem";
     const char key_name_pub[] = "CA/keys/ca_pub_rsa_key.pem";
     const int key_size = 2048;
@@ -63,7 +81,7 @@ int main(int argc, char *argv[]) {
         X509 *cert = X509_new();
         X509_set_version(cert, 2); //  version (v3)
         ASN1_INTEGER_set(X509_get_serialNumber(cert), 1); // Set cert serial number
-        X509_gmtime_adj(X509_get_notBefore(cert), 0);   // Set validity to now
+        X509_gmtime_adj(X509_get_notBefore(cert), -60);   // Set validity to now
         X509_gmtime_adj(X509_get_notAfter(cert), 31536000L); // 1 year
 
         // subject name (CA identity)
@@ -158,7 +176,7 @@ int main(int argc, char *argv[]) {
 
 
 
-// Step 1: On powering up connect to a port
+// Step 2: On powering up connect to a port
     // if user doens't provide 2 arguements
     if (argc < 2) {
         fprintf(stderr, "Port not provided. Program terminated\n");
@@ -175,7 +193,7 @@ int main(int argc, char *argv[]) {
         return ERROR;
     }
 
-    bzero((char *) &serv_addr, sizeof(serv_addr));
+    memset(&serv_addr, 0, sizeof(serv_addr));
     int portno = atoi(argv[1]);
 
     serv_addr.sin_family = AF_INET;
@@ -190,314 +208,332 @@ int main(int argc, char *argv[]) {
     // 5 is the number of clients that can connect to the server at a time
     listen(sockfd, 5);
     clilen = sizeof(cli_addr);
-
-// Step 2: Loop a listen function to listen for csr request to the CA "port"
-
-// Eventually loop this so it connitnuously is listening and accepting clients connection and csr's
-    int newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
-    if (newsockfd < 0) {
-        printf("Error on Accepting socket connections");
-        return ERROR;
-    }
-
-    size_t expect_file_size = 0;
-    char *buffer = NULL;
-
-    int val = recv(newsockfd, &expect_file_size, sizeof(expect_file_size), 0);
-    if (val <= 0) {
-        printf("Failed to recieve size of expected data for the CA\n");
-        return ERROR;
-    }
+    char *buffer = NULL; 
+    buffer = malloc(10);
 
 
-    buffer = malloc(expect_file_size);
-    size_t total = 0;
-    while (total < expect_file_size) {
-        ssize_t n = recv(newsockfd, buffer + total, expect_file_size - total, 0);
-        if (n <= 0) {
-            printf("recieve failed for the CA\n");
+
+// Step 3: Loop a listen function to listen for csr request to the CA "port"
+    while(keep_running) {
+        int newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
+        if (newsockfd < 0) {
+            if (keep_running == 0) break;
+            if (errno == EINTR) continue; // Checks if error num from signal is inturpution 
+            printf("Error on Accepting socket connections\n");
             return ERROR;
         }
-        total += n;
-    }
 
-    
-
-/* Step 3: Once reecieved a CSR reads and Validate CSR was signed by private key of matching public key (integrity)
-
-    
-    Things needed to be checked by CA before the csr can get signed
-        * private key used to sign matches the public key for authenticity
-        * When you hash the body of the csr it should match the hash in the signature this checks the integrity 
-        * Check serial number that it's in the databse and unused
-        * Device name that it's in the database and unused
-*/
-
-    // Writing csr to file to then conveert file to openSSL req struct to perform functions on
-    FILE *csr_fp = fopen("CA/certs/signed/received.csr", "wb");
-    if (!csr_fp) {
-        printf("Error in CA trying to open csr file to write\n");
-        free(buffer);
-        return ERROR;
-    }
-    fwrite(buffer, 1, total, csr_fp);
-    fclose(csr_fp);         // Reset the file pointer to the beginning if further reading is needed
-
-    // Reading csr and putting it into a openSSL struct 
-    FILE *read_csr_fp = fopen("CA/certs/signed/received.csr", "r");
-    if (!read_csr_fp) {
-        free(buffer);
-        return ERROR;
-    }
-    X509_REQ *req = PEM_read_X509_REQ(read_csr_fp, NULL, NULL, NULL);
-    fclose(read_csr_fp);
-
-    EVP_PKEY *pubkey = X509_REQ_get_pubkey(req);     // Extract public key from the csr
-    // Checking Authenticity and Integrity 
-    printf("Checking CSR's authenticity and integrity...\n");
-    int check = X509_REQ_verify(req, pubkey); // Hashes the body and decrypts the signature using the public key and compares the two
-    if (check < 0) {
-        printf("Error during verification\n");
-        free(buffer);
-        EVP_PKEY_free(pubkey);
-        X509_REQ_free(req); 
-        return ERROR;    
-    } else if (check == 0) {
-        printf("CSR signature is INVALID\n");
-        free(buffer);
-        EVP_PKEY_free(pubkey);
-        X509_REQ_free(req);
-        return -ERROR;
-    }
-
-    printf("CSR's authenticity and integrity verified moving on to check fields... \n");
-    EVP_PKEY_free(pubkey);
-
-
-// Checking CSR fields compared to database
-    X509_NAME *subject = X509_REQ_get_subject_name(req); //Pulls all fields into a structured object
-    char csr_common_name[256];
-    char csr_serial_num[256];
-    char csr_organization[256];
-    X509_NAME_get_text_by_NID(subject, NID_commonName, csr_common_name, sizeof(csr_common_name));
-    X509_NAME_get_text_by_NID(subject, NID_serialNumber, csr_serial_num, sizeof(csr_serial_num));
-    X509_NAME_get_text_by_NID(subject, NID_organizationName, csr_organization, sizeof(csr_organization));
-
-    printf("Device info after reading CSR Org -> %s Com Name -> %s Ser Num -> %s\n", csr_organization, csr_common_name, csr_serial_num);
-
-    // Could be a changed to a SQL database instead of writing to a file
-    FILE *db_fp = fopen("CA/database/approved_devices.txt", "r");
-    if (!db_fp) {
-        fprintf(stderr, "Error trying to open Approved Devices Data base\n");
-        free(buffer);
-        close(newsockfd);
-        close(sockfd);
-        return ERROR;
-    }
-    FILE *temp_db_fp = fopen("CA/database/temp_approved_devices.txt", "wb");
-    if (!temp_db_fp) {
-        fprintf(stderr, "Error trying to open TEMP Approved Devices Data base\n");
-        free(buffer);
-        close(newsockfd);
-        close(sockfd);
-        return ERROR;
-    }
-    char db_buffer[256];
-    bool is_device_approved = false;
-
-    while(fgets(db_buffer, sizeof(db_buffer), db_fp) != NULL) {
-        int wordcount = 0;
-        char org[25] = "";
-        char com_n[25] = "";
-        char sn[25] = "";
-        int index_org = 0;
-        int index_com_n = 0;
-        int index_sn = 0;
-
-        // Check if device already been signed off then skip to next device in database
-        if (db_buffer[0] == '1') {
-            fprintf(temp_db_fp, "%s", db_buffer);
+        size_t expect_file_size = 0;
+        int val = recv(newsockfd, &expect_file_size, sizeof(expect_file_size), 0);
+        if (val <= 0) {
+            printf("Failed to recieve size of expected data for the CA: DISCONNECTING\n\n");
+            close(newsockfd);
             continue;
         }
-        // Extracting each key word from the database for comparison
-        for(size_t i  = 2; i < strlen(db_buffer) + 1; ++i) {
-            if (db_buffer[i] == '|') {
-                ++wordcount;
-                continue;
-            }
-        // Important to replace \n with \0 so the string compare is perfect
-            if (wordcount == 0) {
-                if (db_buffer[i] == '\n') {
-                    org[index_org++] = '\0';
-                    continue;
-                }
-                org[index_org++] = db_buffer[i];
-            } else if (wordcount == 1) {
-                if (db_buffer[i] == '\n') {
-                    com_n[index_com_n++] = '\0';
-                    continue;
-                }
-                com_n[index_com_n++] = db_buffer[i];
-            } else {
-                if (db_buffer[i] == '\n') {
-                    sn[index_sn++] = '\0';
-                    continue;
-                }
-                sn[index_sn++] = db_buffer[i];
-            }
-        }
-        // Technically not needed because of how strings were intilaized but good practice
-        org[index_org] = '\0';
-        com_n[index_com_n] = '\0';
-        sn[index_sn] = '\0';
-
-        // See if the csr data matches the database
-        if (strcmp(org, csr_organization) + strcmp(com_n, csr_common_name) + strcmp(sn, csr_serial_num) == 0) {
-            printf("CSR matched Database attempted to update database...\n");
-            fprintf(temp_db_fp, "1|%s|%s|%s\n", org, com_n, sn);
-            printf("1|%s|%s|%s\n", org, com_n, sn);
-            is_device_approved = true;
-            printf("Database updated for device %s...\n", com_n);
-
-        } else {
-            fprintf(temp_db_fp, "0|%s|%s|%s\n", org, com_n, sn);
-        }
-    }
-    fclose(temp_db_fp);
-    fclose(db_fp);
-
-// This is not ideal method for handling database but that is not the current focus can come back and improve later on
-// Replacing old database with updated database
-    if (remove("CA/database/approved_devices.txt") != 0) {
-        perror("Error updating the old  database file");
-    }
-    if (rename("CA/database/temp_approved_devices.txt", "CA/database/approved_devices.txt") != 0) {
-        perror("Error updating the new database file");
-    }
-
-    // based off is_device_approved then sign cert and send it back
-    ssize_t sent = send(newsockfd, &is_device_approved, sizeof(is_device_approved), 0);
-    if (sent <= 0) {
-        printf("Failed to send boolean check to device\n");
-        return ERROR;
-    }
-
-    if (is_device_approved) {
-        printf("CSR meets all requirements I will now sign the CSR and send a Certificate back to you...\n");
-        
-        char device_cert_dest[60] = "CA/certs/signed/";
-        strcat(device_cert_dest, csr_common_name);
-        strcat(device_cert_dest, ".crt");
-        printf("%s\n", device_cert_dest);
-
-        FILE *device_cert_fp = fopen(device_cert_dest, "w+b"); 
-        if (!device_cert_fp) {
-            fprintf(stderr, "Error opening device cert file to write cert\n");
-            return ERROR;
-        }
-
-        FILE *priv_key_fp = fopen("CA/keys/ca_priv_rsa_key.pem", "r");
-        if (!priv_key_fp) {
-            fprintf(stderr, "Error opening private key file for CA for signing the cert\n");
-            return ERROR;
-        }
-        EVP_PKEY *ca_priv_key = PEM_read_PrivateKey(priv_key_fp, NULL, NULL, NULL); // Get private key from key file
-        fclose(priv_key_fp);
-        
-        FILE *ca_cert_fp = fopen("CA/certs/personal/ca_cert.crt", "r");
-        if (!ca_cert_fp) {
-            fprintf(stderr, "Error opening CA cert for signing the cert\n");
-            return ERROR;           
-        }
-        X509 *ca_cert = PEM_read_X509(ca_cert_fp, NULL, NULL, NULL);
-        fclose(ca_cert_fp);
-
-        X509 *cert = X509_new();
-        X509_set_version(cert, 2);        // Set version of cert
-        ASN1_INTEGER_set(X509_get_serialNumber(cert), serial++);   // Create a serial num for cert
-        X509_set_issuer_name(cert, X509_get_subject_name(ca_cert));  // Set name of CA (issuer of the cert)  
-        X509_set_subject_name(cert, X509_REQ_get_subject_name(req));  // Set subject from devices csr
-
-        EVP_PKEY *pubkey = X509_REQ_get_pubkey(req);    // Get public key from device csr
-        X509_set_pubkey(cert, pubkey);
-        X509_gmtime_adj(X509_get_notBefore(cert), 0);   // Set dates for when cert is valid 0 = now
-        X509_gmtime_adj(X509_get_notAfter(cert), 31536000L);
-        // Signing cert that contains info about the csr, device, and CA
-        X509_sign(cert, ca_priv_key, EVP_sha256());
-        EVP_PKEY_free(ca_priv_key);
-        X509_REQ_free(req); 
 
 
-        if (PEM_write_X509(device_cert_fp, cert) != 1) {
-            fprintf(stderr, "Failed to write Device cert to file\n");
-            fclose(device_cert_fp);
-            X509_free(cert);
-            X509_REQ_free(req); 
-            return ERROR;
-        }
-
-        rewind(device_cert_fp);
-
-// possibly don't need this
-        buffer = NULL;
-        size_t file_size = 0;
-        // Go to end of file to get size
-        if (fseek(device_cert_fp, 0, SEEK_END) == 0) {
-            file_size = ftell(device_cert_fp);         // Get the current position (which is the file size in bytes)
-            rewind(device_cert_fp);         // Reset the file pointer to the beginning if further reading is needed
-        } else {
-            perror("Error accessing the end of file in device1\n");
-            fclose(device_cert_fp);
-            X509_free(cert);
-            return ERROR;
-        }
-        
-        char *temp = realloc(buffer, file_size);
+        char *temp = realloc(buffer, expect_file_size);
         if (!temp) {
-            fclose(device_cert_fp);
-            X509_free(cert);
-            free(buffer);
-            return ERROR;
-        } 
-        buffer = temp;
-    
-        ssize_t bytes_read = fread(buffer, 1, file_size, device_cert_fp);
-        fclose(device_cert_fp);
-
-        // Sending size of expected data to device
-        int n = send(newsockfd, &bytes_read, sizeof(bytes_read), 0);
-        if (n < 0) {
-            error("ERROR sending size to socket");
+            printf("Failed to realloc buffer memory\n");
+            close(newsockfd);
+            close(sockfd);
             return ERROR;
         }
-        ssize_t total_sent = 0;
-        printf("Sending Certifacte back: \n");
+        buffer = temp;
 
-        // Send data/bytes until total size sent = the file size
-        while (total_sent < bytes_read) {
-            ssize_t n = send(newsockfd, buffer + total_sent, bytes_read - total_sent, 0);
+        size_t total = 0;
+        while (total < expect_file_size) {
+            ssize_t n = recv(newsockfd, buffer + total, expect_file_size - total, 0);
             if (n <= 0) {
-                error("Error sending cert to device over the socket\n");
+                printf("recieve failed for the CA\n");
+                free(buffer);
+                close(newsockfd);
+                close(sockfd);
                 return ERROR;
             }
-            total_sent += n;
+            total += n;
         }
 
         
 
-    } else {
-        // NOTE if cert is not being sent back device should handle change in size whihc the while loop should handle
-        // Simple versino will happen if cert is not being sent back but isntead it's a small message saying csr not getting signed 
+    /* Step 4: Once reecieved a CSR reads and Validate CSR was signed by private key of matching public key (integrity)
+        Things needed to be checked by CA before the csr can get signed
+            * private key used to sign matches the public key for authenticity
+            * When you hash the body of the csr it should match the hash in the signature this checks the integrity 
+            * Check serial number that it's in the databse and unused
+            * Device name that it's in the database and unused
+    */
+
+        // Writing csr to file to then conveert file to openSSL req struct to perform functions on
+        FILE *csr_fp = fopen("CA/certs/signed/received.csr", "wb");
+        if (!csr_fp) {
+            printf("Error in CA trying to open csr file to write: DISCONNECTING\n\n");
+            close(newsockfd);
+            continue;
+        }
+        fwrite(buffer, 1, total, csr_fp);
+        fclose(csr_fp);         // Reset the file pointer to the beginning if further reading is needed
+
+        // Reading csr and putting it into a openSSL struct 
+        FILE *read_csr_fp = fopen("CA/certs/signed/received.csr", "r");
+        if (!read_csr_fp) {
+            printf("Error in CA trying to read csr file: DISCONNECTING\n\n");
+            close(newsockfd);
+            continue;
+        }
+                
+        bool is_device_approved = false;
+        X509_REQ *req = PEM_read_X509_REQ(read_csr_fp, NULL, NULL, NULL);
+        fclose(read_csr_fp);
+
+        EVP_PKEY *pubkey = X509_REQ_get_pubkey(req);     // Extract public key from the csr
+        // Checking Authenticity and Integrity 
+        printf("Checking CSR's authenticity and integrity...\n");
+        int check = X509_REQ_verify(req, pubkey); // Hashes the body and decrypts the signature using the public key and compares the two
+        if (check < 0) {
+            printf("Error during verification: DISCONNECTING\n\n");
+            EVP_PKEY_free(pubkey);
+            X509_REQ_free(req); 
+            close(newsockfd);
+            continue;    
+        } else if (check == 0) {
+            printf("CSR signature is INVALID not signing CSR: DISCONNECTING\n\n");
+            printf("Device is not approved to be signed by the CA: DISCONNECTING\n\n");
+            EVP_PKEY_free(pubkey);
+            X509_REQ_free(req);
+            ssize_t sent = send(newsockfd, &is_device_approved, sizeof(is_device_approved), 0);
+            if (sent <= 0) {
+                printf("Failed to send boolean check to device\n");
+                return ERROR;
+            }
+            close(newsockfd);
+            continue;
+        }
+
+        printf("CSR's authenticity and integrity verified moving on to check fields... \n");
+        EVP_PKEY_free(pubkey);
 
 
-        printf("Device is not approved to be signed by the CA\n");
+    // Checking CSR fields compared to database
+        X509_NAME *subject = X509_REQ_get_subject_name(req); //Pulls all fields into a structured object
+        char csr_common_name[256];
+        char csr_serial_num[256];
+        char csr_organization[256];
+        X509_NAME_get_text_by_NID(subject, NID_commonName, csr_common_name, sizeof(csr_common_name));
+        X509_NAME_get_text_by_NID(subject, NID_serialNumber, csr_serial_num, sizeof(csr_serial_num));
+        X509_NAME_get_text_by_NID(subject, NID_organizationName, csr_organization, sizeof(csr_organization));
+
+        printf("Device info after reading CSR Org -> %s Com Name -> %s Ser Num -> %s\n", csr_organization, csr_common_name, csr_serial_num);
+
+        // Could be a changed to a SQL database instead of writing to a file
+        FILE *db_fp = fopen("CA/database/approved_devices.txt", "r");
+        if (!db_fp) {
+            fprintf(stderr, "Error trying to open Approved Devices Data base\n");
+            free(buffer);
+            close(newsockfd);
+            close(sockfd);
+            return ERROR;
+        }
+        FILE *temp_db_fp = fopen("CA/database/temp_approved_devices.txt", "wb");
+        if (!temp_db_fp) {
+            fprintf(stderr, "Error trying to open TEMP Approved Devices Data base\n");
+            free(buffer);
+            close(newsockfd);
+            close(sockfd);
+            return ERROR;
+        }
+        char db_buffer[256];
+
+        while(fgets(db_buffer, sizeof(db_buffer), db_fp) != NULL) {
+            int wordcount = 0;
+            char org[25] = "";
+            char com_n[25] = "";
+            char sn[25] = "";
+            int index_org = 0;
+            int index_com_n = 0;
+            int index_sn = 0;
+
+            // Check if device already been signed off then skip to next device in database
+            if (db_buffer[0] == '1') {
+                fprintf(temp_db_fp, "%s", db_buffer);
+                continue;
+            }
+            // Extracting each key word from the database for comparison
+            for(size_t i  = 2; i < strlen(db_buffer) + 1; ++i) {
+                if (db_buffer[i] == '|') {
+                    ++wordcount;
+                    continue;
+                }
+            // Important to replace \n with \0 so the string compare is perfect
+                if (wordcount == 0) {
+                    if (db_buffer[i] == '\n') {
+                        org[index_org++] = '\0';
+                        continue;
+                    }
+                    org[index_org++] = db_buffer[i];
+                } else if (wordcount == 1) {
+                    if (db_buffer[i] == '\n') {
+                        com_n[index_com_n++] = '\0';
+                        continue;
+                    }
+                    com_n[index_com_n++] = db_buffer[i];
+                } else {
+                    if (db_buffer[i] == '\n') {
+                        sn[index_sn++] = '\0';
+                        continue;
+                    }
+                    sn[index_sn++] = db_buffer[i];
+                }
+            }
+            // Technically not needed because of how strings were intilaized but good practice
+            org[index_org] = '\0';
+            com_n[index_com_n] = '\0';
+            sn[index_sn] = '\0';
+
+            // See if the csr data matches the database
+            if (strcmp(org, csr_organization) + strcmp(com_n, csr_common_name) + strcmp(sn, csr_serial_num) == 0) {
+                printf("CSR matched Database attempted to update database...\n");
+                fprintf(temp_db_fp, "1|%s|%s|%s\n", org, com_n, sn);
+                printf("1|%s|%s|%s\n", org, com_n, sn);
+                is_device_approved = true;
+                printf("Database updated for device %s...\n", com_n);
+
+            } else {
+                fprintf(temp_db_fp, "0|%s|%s|%s\n", org, com_n, sn);
+            }
+        }
+        fclose(temp_db_fp);
+        fclose(db_fp);
+
+    // This is not ideal method for handling database but that is not the current focus can come back and improve later on
+    // Replacing old database with updated database
+        if (remove("CA/database/approved_devices.txt") != 0) {
+            perror("Error updating the old  database file");
+        }
+        if (rename("CA/database/temp_approved_devices.txt", "CA/database/approved_devices.txt") != 0) {
+            perror("Error updating the new database file");
+        }
+
+        // based off is_device_approved then sign cert and send it back
+        ssize_t sent = send(newsockfd, &is_device_approved, sizeof(is_device_approved), 0);
+        if (sent <= 0) {
+            printf("Failed to send boolean check to device\n");
+            return ERROR;
+        }
+
+        if (is_device_approved) {
+            printf("CSR meets all requirements I will now sign the CSR and send a Certificate back to device...\n");
+            
+            char device_cert_dest[60] = "CA/certs/signed/";
+            strcat(device_cert_dest, csr_common_name);
+            strcat(device_cert_dest, ".crt");
+            printf("%s\n", device_cert_dest);
+
+            FILE *device_cert_fp = fopen(device_cert_dest, "w+b"); 
+            if (!device_cert_fp) {
+                fprintf(stderr, "Error opening device cert file to write cert\n");
+                return ERROR;
+            }
+
+            FILE *priv_key_fp = fopen("CA/keys/ca_priv_rsa_key.pem", "r");
+            if (!priv_key_fp) {
+                fprintf(stderr, "Error opening private key file for CA for signing the cert\n");
+                return ERROR;
+            }
+            EVP_PKEY *ca_priv_key = PEM_read_PrivateKey(priv_key_fp, NULL, NULL, NULL); // Get private key from key file
+            fclose(priv_key_fp);
+            
+            FILE *ca_cert_fp = fopen("CA/certs/personal/ca_cert.crt", "r");
+            if (!ca_cert_fp) {
+                fprintf(stderr, "Error opening CA cert for signing the cert\n");
+                return ERROR;           
+            }
+            X509 *ca_cert = PEM_read_X509(ca_cert_fp, NULL, NULL, NULL);
+            fclose(ca_cert_fp);
+
+            X509 *cert = X509_new();
+            X509_set_version(cert, 2);        // Set version of cert
+            ASN1_INTEGER_set(X509_get_serialNumber(cert), serial++);   // Create a serial num for cert
+            X509_set_issuer_name(cert, X509_get_subject_name(ca_cert));  // Set name of CA (issuer of the cert)  
+            X509_set_subject_name(cert, X509_REQ_get_subject_name(req));  // Set subject from devices csr
+
+            EVP_PKEY *pubkey = X509_REQ_get_pubkey(req);    // Get public key from device csr
+            X509_set_pubkey(cert, pubkey);
+            X509_gmtime_adj(X509_get_notBefore(cert), -60);   // Set dates for when cert is valid 0 = now
+            X509_gmtime_adj(X509_get_notAfter(cert), 31536000L);
+            // Signing cert that contains info about the csr, device, and CA
+            X509_sign(cert, ca_priv_key, EVP_sha256());
+            EVP_PKEY_free(ca_priv_key);
+            X509_REQ_free(req); 
+
+
+            if (PEM_write_X509(device_cert_fp, cert) != 1) {
+                fprintf(stderr, "Failed to write Device cert to file\n");
+                fclose(device_cert_fp);
+                X509_free(cert);
+                X509_REQ_free(req); 
+                return ERROR;
+            }
+
+            rewind(device_cert_fp);
+
+    // possibly don't need this
+            buffer = NULL;
+            size_t file_size = 0;
+            // Go to end of file to get size
+            if (fseek(device_cert_fp, 0, SEEK_END) == 0) {
+                file_size = ftell(device_cert_fp);         // Get the current position (which is the file size in bytes)
+                rewind(device_cert_fp);         // Reset the file pointer to the beginning if further reading is needed
+            } else {
+                perror("Error accessing the end of file in device1\n");
+                fclose(device_cert_fp);
+                X509_free(cert);
+                return ERROR;
+            }
+            
+            char *temp = realloc(buffer, file_size);
+            if (!temp) {
+                fclose(device_cert_fp);
+                X509_free(cert);
+                free(buffer);
+                return ERROR;
+            } 
+            buffer = temp;
+        
+            ssize_t bytes_read = fread(buffer, 1, file_size, device_cert_fp);
+            fclose(device_cert_fp);
+
+            // Sending size of expected data to device
+            int n = send(newsockfd, &bytes_read, sizeof(bytes_read), 0);
+            if (n < 0) {
+                error("ERROR sending size to socket");
+                return ERROR;
+            }
+            ssize_t total_sent = 0;
+            printf("Sending Certifacte back: \n");
+
+            // Send data/bytes until total size sent = the file size
+            while (total_sent < bytes_read) {
+                ssize_t n = send(newsockfd, buffer + total_sent, bytes_read - total_sent, 0);
+                if (n <= 0) {
+                    error("Error sending cert to device over the socket\n");
+                    return ERROR;
+                }
+                total_sent += n;
+            }
+
+            
+
+        } else {
+            printf("Device is not approved to be signed by the CA: DISCONNECTING\n\n");
+        }
+        X509_REQ_free(req); 
+        close(newsockfd);
     }
 
 
-    printf("\nClosed\n");
+    printf("\nServer shutting down: CLOSED\n");
     free(buffer);
-    X509_REQ_free(req); 
-    close(newsockfd);
     close(sockfd);
 
     return 0;
