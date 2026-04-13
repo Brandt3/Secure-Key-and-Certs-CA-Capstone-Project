@@ -8,6 +8,8 @@
 *.o
 test_program
 Device_1_test
+Device_2_test
+Device_3_test
 CA_test_port
 Power_Hypervisor_test
 
