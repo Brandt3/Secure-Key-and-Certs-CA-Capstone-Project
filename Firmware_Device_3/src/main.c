@@ -93,6 +93,7 @@ int main(int argc, char *argv[]) {
     
         // Free memory storing key data structure as it is now written to a file a shouldn't be store to memory
         free_Pkey(pkey);
+        printf("Created Public and Private RSA key\n");
  
 //  Check if public key fp exist / is created
     } else if(!is_fp_Exist(key_name_pub)) { //If there is a private key but not public key create public key from already created private key
@@ -112,6 +113,9 @@ int main(int argc, char *argv[]) {
 
     // Free memory storing key data structure as it is now written to a file a shouldn't be store to memory
         free_Pkey(pkey);
+        printf("Retrieved Public key from Private key file\n");
+        
+
 
     } else {
         printf("Didn't run key creation they are already created\n");
@@ -240,6 +244,8 @@ int main(int argc, char *argv[]) {
         EVP_PKEY_free(pkey);
         X509_REQ_free(csr);
         NCONF_free(conf);
+        printf("Created CSR signing with private key and getting data from config file\n");
+
         
     } else if (is_privkey_created) { // If there was a previous csr but a pirvate key just got create new csr must be made with private key signature
         if (remove(csr_fp) != 0) {
@@ -347,6 +353,8 @@ int main(int argc, char *argv[]) {
         EVP_PKEY_free(pkey);
         X509_REQ_free(csr);
         NCONF_free(conf);
+        printf("Removed old CSR since it didn't match the new private key; Created CSR signing with private key and getting data from config file\n");
+
 
 
 
