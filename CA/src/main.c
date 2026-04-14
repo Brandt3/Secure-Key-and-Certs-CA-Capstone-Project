@@ -510,7 +510,7 @@ int main(int argc, char *argv[]) {
                 return ERROR;
             }
             ssize_t total_sent = 0;
-            printf("Sending Certifacte back: \n");
+            printf("Sending Certifacte back: \n\n");
 
             // Send data/bytes until total size sent = the file size
             while (total_sent < bytes_read) {

@@ -109,7 +109,7 @@ int main(int argc, char *argv[]) {
             }
             total += n;
         }
-        printf("Received device cert and checking SSL/TSL validation\n");
+        printf("Received device cert and checking TLS/SSL validation\n");
         buffer[expect_file_size] = '\0';
 
         FILE *ca_cert_fp = fopen("Power_Hypervisor/trusted_ca/ca_cert.crt", "r");
@@ -135,7 +135,7 @@ int main(int argc, char *argv[]) {
         X509 *device_cert = PEM_read_bio_X509(bio, NULL, NULL, NULL);
         BIO_free(bio);
 
-    // Perform SSL/TLS validations
+    // Perform TLS/SSL validations
 
         /* For Future adition to progress could lookingot using this instead to check chain of trust as well
                     X509_STORE *store = X509_STORE_new();
@@ -190,7 +190,7 @@ int main(int argc, char *argv[]) {
                 continue;
             }
         }
-        printf("CERTIFICATE TRUSTED: You can now perform actions with the Power Hyperviosr\n");
+        printf("CERTIFICATE TRUSTED: You can now perform actions with the Power Hyperviosr\n\n");
     }
 
 
