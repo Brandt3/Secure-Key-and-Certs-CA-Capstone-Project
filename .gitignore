@@ -17,6 +17,11 @@ Power_Hypervisor_test
 CA/certs/
 *.crt
 
+# Device csr's
+Firmware_Device_1/certs/device1.csr
+Firmware_Device_2/certs/device2.csr
+Firmware_Device_3/certs/device3.csr
+
 # Personal database used
 CA/database/approved_devices.txt
 CA/database/temp_approved_devices.txt
