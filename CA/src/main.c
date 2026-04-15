@@ -427,7 +427,6 @@ int main(int argc, char *argv[]) {
             char device_cert_dest[60] = "CA/certs/signed/";
             strcat(device_cert_dest, csr_common_name);
             strcat(device_cert_dest, ".crt");
-            printf("%s\n", device_cert_dest);
 
             FILE *device_cert_fp = fopen(device_cert_dest, "w+b"); 
             if (!device_cert_fp) {
@@ -477,8 +476,6 @@ int main(int argc, char *argv[]) {
 
             rewind(device_cert_fp);
 
-    // possibly don't need this
-            buffer = NULL;
             size_t file_size = 0;
             // Go to end of file to get size
             if (fseek(device_cert_fp, 0, SEEK_END) == 0) {
@@ -522,9 +519,14 @@ int main(int argc, char *argv[]) {
                 total_sent += n;
             }
 
-            
+            remove("CA/certs/signed/received.csr");   // No longer needed now that the cert is stored
+
 
         } else {
+            char start_csr_fp[60] = "CA/certs/revoked/";
+            strcat(start_csr_fp, csr_common_name);
+            strcat(start_csr_fp, ".csr");
+            rename("CA/certs/signed/received.csr", start_csr_fp);
             printf("Device is not approved to be signed by the CA: DISCONNECTING\n\n");
         }
         X509_REQ_free(req); 

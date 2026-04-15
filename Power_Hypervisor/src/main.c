@@ -152,7 +152,7 @@ int main(int argc, char *argv[]) {
         // #1 Verify Cert has the trusted CA's signature
         int n = X509_verify(device_cert, ca_pubkey);
         if (n == 0) {
-            printf("CERTIFICATE NOT VALID: Certs signature is not from a trusted CA therefore the device is not trusted: DISCONNECTING socket connection\n");
+            printf("CERTIFICATE NOT VALID: Certs signature is not from a trusted CA therefore the device is not trusted: DISCONNECTING socket connection\n\n");
             close(newsockfd); // Disconnect Deivce that's not trusted
             continue;
         } else if (n < 0) {
@@ -172,7 +172,7 @@ int main(int argc, char *argv[]) {
         // Check if cert is not yet valid
         if (ASN1_TIME_diff(&day, &sec, NULL, not_before) == 1) {
             if (day > 0 || sec > 0) {
-                printf("CERTIFICATE NOT VALID: Certs is not valid yet (to soon): DISCONNECTING socket connection\n");
+                printf("CERTIFICATE NOT VALID: Certs is not valid yet (to soon): DISCONNECTING socket connection\n\n");
                 close(newsockfd);
                 X509_free(device_cert);
                 EVP_PKEY_free(ca_pubkey);
@@ -183,7 +183,7 @@ int main(int argc, char *argv[]) {
         // Check if expired
         if (ASN1_TIME_diff(&day, &sec, NULL, not_after) == 1) {
             if (day < 0 || sec < 0) {
-                printf("CERTIFICATE NOT VALID: Certs is expired: DISCONNECTING socket connection\n");
+                printf("CERTIFICATE NOT VALID: Certs is expired: DISCONNECTING socket connection\n\n");
                 close(newsockfd);
                 X509_free(device_cert);
                 EVP_PKEY_free(ca_pubkey);
