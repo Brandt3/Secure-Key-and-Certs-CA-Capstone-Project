@@ -516,7 +516,7 @@ int main(int argc, char *argv[]) {
         fclose(cert_fp);
     // FIXME This is a function that needs to be updated
     } else if (!is_fp_Exist(expected_cert_fp)) {
-        printf("CSR was not signed by cert. I will sign it myself\n");
+        printf("CSR was not signed by CA. I will sign it myself\n");
 
         FILE *csr_fp = fopen("Firmware_Device_3/certs/device3.csr", "r");
         if (!csr_fp) {
