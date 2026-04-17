@@ -468,7 +468,6 @@ int main(int argc, char *argv[]) {
 
     const char *expected_cert_fp = "Firmware_Device_3/certs/device3_cert.crt";
 
-// FIXME this code has not been tested yet
     bool is_cert_signed = false;
     size_t expect_file_size = 0;
     int num = recv(sockfd, &is_cert_signed, sizeof(is_cert_signed), 0);
@@ -514,7 +513,6 @@ int main(int argc, char *argv[]) {
         }
         fwrite(buffer, 1, total, cert_fp);
         fclose(cert_fp);
-    // FIXME This is a function that needs to be updated
     } else if (!is_fp_Exist(expected_cert_fp)) {
         printf("CSR was not signed by CA. I will sign it myself\n");
 
