@@ -9,7 +9,7 @@ In a real situation Steps 1 and 2 already have the info stored on a secure flash
     * Store Key in the keys file
     * Note Keys persist across reboots (try to emulate that here as well so only create the keys once)
 
-2. Create CSR and request user for CSR info plus exstention
+2. Create CSR and request user for CSR info plus extension
     * Store CSR in certs file
     * Input all CSR info required / could also pull info from a config file
     * Real world the device read this info from a NVRAM/secure storage

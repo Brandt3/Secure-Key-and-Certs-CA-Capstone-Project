@@ -1,27 +1,48 @@
-# CA Structure
+# CA — Certificate Authority
 
-Set the CA folder connected to a port to allow it to act as a server that is "always running"
-Then this can run sperately and always be running if wanted
+The CA folder connects to a port to act as a server that is "always running," allowing it to run separately and remain active indefinitely.
 
-Step 1: On powering up connect to a port
+---
 
-Step 2: Loop a listen function to listen for csr request to the CA "port"
+## Flow
 
-Step 3: Once reecieeved a CSR reads and Validate CSR and checks these fields before it can get signed
-    * private key used to sign matches the public key for authenticity
-    * When you hash the body of the csr it should match the hash in the signature this checks the integrity 
-    * Check serial number that it's in the databse and unused
-    * Device name that it's in the database and unused 
-    * Organization Name that it is the proper company
+### Step 1 — Power On
+Connect to a port and begin listening.
 
-Step 4: If valid step 3 then read CSR's CN (Common Name) SN (serial number) ensuring they are presenet, it matches with listed possiblitlies, and that it isn't already deployed or signed.
-    could look to add key strength Ex. if key bit < 2048 reject "Not secure enough key"
+### Step 2 — Listen
+Loop a listen function to wait for incoming CSR requests on the CA port.
 
-Step 5: If all steps are valid sign csr with private key and send new cert back to device. Then store signed cert and SN and CN name which it can use later to see if dupilcate csr's are sent
+### Step 3 — Receive & Validate CSR
+Once a CSR is received, validate the following fields before it can be signed:
 
-Step 6: If at any point something isn't valid reject it print a statement of the device name and why it's rejected, adn store it to certs/rejected which can be helpful to anaylize what device were trying to connect
-    Ex. "Device 1 SN CN was rejected by CA because it was not a valid SN option"
+- Private key used to sign matches the public key *(authenticity)*
+- Hashing the body of the CSR matches the hash in the signature *(integrity)*
+- Serial number is in the database and unused
+- Device name is in the database and unused
+- Organization name matches the expected company
 
-Database storing valid CN and SN could be SQL, noSQL, or simple text file.
-    For better flow I will start with a text file storing valid CN and SN
-    Each device within the database could have also been a struct stored to an array but I wanted a database that would last outside of the programs lifecycle
+### Step 4 — Verify CSR Fields
+If Step 3 passes, read the CSR's CN (Common Name) and SN (Serial Number), ensuring:
+
+- Both fields are present
+- They match a listed valid option
+- The device has not already been deployed or signed
+
+> 💡 **Possible addition:** Check key strength — e.g., if key bit length < 2048, reject with "Not secure enough key."
+
+### Step 5 — Sign & Store
+If all steps are valid, sign the CSR with the CA private key and send the new cert back to the device. Store the signed cert along with the SN and CN to detect any duplicate CSRs in the future.
+
+### Step 6 — Reject & Log
+If at any point validation fails, reject the CSR, print a statement explaining why, and store it to `certs/revoked/` for later analysis.
+
+**Example:**
+Device1 [SN: ABC123, CN: firmware-device-1] rejected by CA — invalid serial number.
+
+
+## Database
+
+Valid CN and SN entries can be stored using SQL, NoSQL, or a simple text file.
+
+- **Current approach:** A text file storing valid CN and SN values — simple and easy to get started with, especially since my focus was not on database structure.
+- Each device entry could alternatively be stored as a struct in an array, but a file-based database was chosen so the data persists outside of the program's lifecycle.
