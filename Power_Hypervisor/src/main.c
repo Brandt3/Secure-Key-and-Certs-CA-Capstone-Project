@@ -76,13 +76,13 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        // Recieve size of Cert that is expected to be received
+        // Receive size of Cert that is expected to be received
     // ===== ENDED HERE =====
         size_t expect_file_size = 0;
 
         int val = recv(newsockfd, &expect_file_size, sizeof(expect_file_size), 0);
         if (val <= 0) {
-            printf("Failed to recieve size of expected data for the validation: DISCONNECTING\n");
+            printf("Failed to receive size of expected data for the validation: DISCONNECTING\n");
             close(newsockfd);
             continue;
         }
@@ -101,7 +101,7 @@ int main(int argc, char *argv[]) {
         while (total < expect_file_size) {
             ssize_t n = recv(newsockfd, buffer + total, expect_file_size - total, 0);
             if (n <= -1) {
-                printf("recieve failed for the Power Hypervisor\n");
+                printf("receive failed for the Power Hypervisor\n");
                 free(buffer);
                 close(newsockfd);
                 close(sockfd);
@@ -137,7 +137,7 @@ int main(int argc, char *argv[]) {
 
     // Perform TLS/SSL validations
 
-        /* For Future adition to progress could lookingot using this instead to check chain of trust as well
+        /* For Future addition to progress could look into using this instead to check chain of trust as well
                     X509_STORE *store = X509_STORE_new();
                     X509_STORE_add_cert(store, ca_cert);
 
@@ -153,7 +153,7 @@ int main(int argc, char *argv[]) {
         int n = X509_verify(device_cert, ca_pubkey);
         if (n == 0) {
             printf("CERTIFICATE NOT VALID: Certs signature is not from a trusted CA therefore the device is not trusted: DISCONNECTING socket connection\n\n");
-            close(newsockfd); // Disconnect Deivce that's not trusted
+            close(newsockfd); // Disconnect Device that's not trusted
             continue;
         } else if (n < 0) {
             printf("Error verifying certs signature\n");
@@ -163,7 +163,7 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        // #2 Check cert experation date
+        // #2 Check cert expiration date
         const ASN1_TIME *not_before = X509_get0_notBefore(device_cert);
         const ASN1_TIME *not_after  = X509_get0_notAfter(device_cert);
         int day = 0;
@@ -190,7 +190,7 @@ int main(int argc, char *argv[]) {
                 continue;
             }
         }
-        printf("CERTIFICATE TRUSTED: You can now perform actions with the Power Hyperviosr\n\n");
+        printf("CERTIFICATE TRUSTED: You can now perform actions with the Power Hypervisor\n\n");
     }
 
 

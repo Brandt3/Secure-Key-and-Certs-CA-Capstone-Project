@@ -17,7 +17,7 @@
 
 
 // NOTE: good check after program is competed is to make sure each pointer have a functions return as it's value should be checked to make sure it's not NULL
-    // Look to create efficeint debugging functions to prevemt redundant code here
+    // Look to create efficient debugging functions to prevent redundant code here
 
 /* common practice
 EVP_PKEY *pkey = NULL;
@@ -44,14 +44,14 @@ Test Cases:
     Previously Nothing -> Create everything GOOD
     Previously Pubkey -> Create Private key, CSR, and CSR contains public key matching one derived from the private key (public key must get rewritten) GOOD
     Previously Privkey -> Create Public key, CSR, and public key matches csr public key GOOD
-    Previously csr -> Didn't run csr creation, creeated both keys, public key matches csr public key GOOD
+    Previously csr -> Didn't run csr creation, created both keys, public key matches csr public key GOOD
     Previously both keys -> Didn't create keys, created csr, public key matches public key in csr GOOD
     Previously pubkey and csr -> created private key, public key matches public key in csr GOOD
     Previously privkey and csr -> did not create extra csr, created public key, public key matches csr public key GOOD
     Previously everything -> Nothing extra created GOOD
 */
 
-// Needs file, CA server IP address (loopback for internal), CA port number, Power Hyperviosr IP address, Power Hyperviosr port number
+// Needs file, CA server IP address (loopback for internal), CA port number, Power Hypervisor IP address, Power Hypervisor port number
 int main(int argc, char *argv[]) {
 
     // In a real situation Steps 1 and 2 already have the info stored on a secure flash (created at manufacturing) 
@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
     if (!is_fp_Exist(key_name_priv)) {
         is_privkey_created = true;
 
-    // Create pkey structure which stores public and private key along with other attirbutes
+    // Create pkey structure which stores public and private key along with other attributes
         EVP_PKEY *pkey = generate_EVP_PKEY(key_size);
 
     // Write private key to secure .pem file
@@ -126,16 +126,16 @@ int main(int argc, char *argv[]) {
 // ======= FUNCTION HAVE NOT BEEN CREATED FOR BELOW CODE =======
 
     /*
-    Intersting factor the pkey is only created if key isn't already created
+    Interesting factor the pkey is only created if key isn't already created
     If it is there is no pkey for csr creation
     SOLUTION: you can still create a csr as long as the private key is saved.
-        Therefore the csr creationg will use the private key file instead of the pkey structure so it 
+        Therefore the csr creating will use the private key file instead of the pkey structure so it 
         doesn't have to be recreated in case the keys are created but not the csr
     */
 
 
 
-// 2. Create CSR and request user for CSR info plus exstention
+// 2. Create CSR and request user for CSR info plus extention
     // Store CSR in certs file
     // Input all CSR info required / could also pull info from a config file
     // Real world the device read this info from a NVRAM/secure storage
@@ -188,7 +188,7 @@ int main(int argc, char *argv[]) {
         }
         
     // STEP 5: Read each field from config and add to subject
-        // Get the "req_dn" section and retursn a "stack"/list of key-value pair Ex. C = US
+        // Get the "req_dn" section and returns a "stack"/list of key-value pair Ex. C = US
         STACK_OF(CONF_VALUE) *dn_sk = NCONF_get_section(conf, "req_dn");
         if(!dn_sk) {
             fprintf(stderr, "Error reading config file for firmware device2\n");
@@ -198,7 +198,7 @@ int main(int argc, char *argv[]) {
         // NOTE: look more into what this code is doing
         if (dn_sk) {
             // Loop through each entry in [req_dn] section
-            // sk_CONF_VALUE_num reeturns num of entries
+            // sk_CONF_VALUE_num returns num of entries
             for (int i = 0; i < sk_CONF_VALUE_num(dn_sk); i++) {
                 CONF_VALUE *v = sk_CONF_VALUE_value(dn_sk, i);
                 
@@ -247,7 +247,7 @@ int main(int argc, char *argv[]) {
         printf("Created CSR signing with private key and getting data from config file\n");
 
         
-    } else if (is_privkey_created) { // If there was a previous csr but a pirvate key just got create new csr must be made with private key signature
+    } else if (is_privkey_created) { // If there was a previous csr but a private key just got create new csr must be made with private key signature
         if (remove(csr_fp) != 0) {
             perror("Error deleting csr file");
         }
@@ -297,7 +297,7 @@ int main(int argc, char *argv[]) {
         }
         
     // STEP 5: Read each field from config and add to subject
-        // Get the "req_dn" section and retursn a "stack"/list of key-value pair Ex. C = US
+        // Get the "req_dn" section and returns a "stack"/list of key-value pair Ex. C = US
         STACK_OF(CONF_VALUE) *dn_sk = NCONF_get_section(conf, "req_dn");
         if(!dn_sk) {
             fprintf(stderr, "Error reading config file for firmware device2\n");
@@ -307,7 +307,7 @@ int main(int argc, char *argv[]) {
         // NOTE: look more into what this code is doing
         if (dn_sk) {
             // Loop through each entry in [req_dn] section
-            // sk_CONF_VALUE_num reeturns num of entries
+            // sk_CONF_VALUE_num returns num of entries
             for (int i = 0; i < sk_CONF_VALUE_num(dn_sk); i++) {
                 CONF_VALUE *v = sk_CONF_VALUE_value(dn_sk, i);
                 
@@ -367,9 +367,9 @@ int main(int argc, char *argv[]) {
     
 
 // 3. Send CSR to CA to see if it will get signed
-    // If it does store cert in certs file and delete CSR (Privode a status update in the terminal for each device)
+    // If it does store cert in certs file and delete CSR (Provide a status update in the terminal for each device)
     // If reject display message / echo "Device number could not get signed as it does not meet requirements therefore it can not try and connect to the Power Hypervisor"
-    // Can look into ssl_connect, ssl_write, ssl_read which is used to authenicate the server trying to connect to
+    // Can look into ssl_connect, ssl_write, ssl_read which is used to authenticate the server trying to connect to
     struct sockaddr_in serv_addr;
     struct hostent *server;
 
@@ -472,15 +472,15 @@ int main(int argc, char *argv[]) {
     size_t expect_file_size = 0;
     int num = recv(sockfd, &is_cert_signed, sizeof(is_cert_signed), 0);
     if (num == -1) {
-        printf("Failed to recieve boolean check from CA\n");
+        printf("Failed to receive boolean check from CA\n");
         close(sockfd);
         return ERROR;
     }
-    // If cert is signed then prepare to recieve cert
+    // If cert is signed then prepare to receive cert
     if (is_cert_signed) {
         int val = recv(sockfd, &expect_file_size, sizeof(expect_file_size), 0);
         if (val == -1) {
-            perror("Failed to recieve size of expected data for the CA");
+            perror("Failed to receive size of expected data for the CA");
             close(sockfd);
             return ERROR;
         }
@@ -498,7 +498,7 @@ int main(int argc, char *argv[]) {
         while (total < expect_file_size) {
             ssize_t n = recv(sockfd, buffer + total, expect_file_size - total, 0);
             if (n <= 0) {
-                printf("recieve failed for the device\n");
+                printf("receive failed for the device\n");
                 close(sockfd);
                 return ERROR;
             }
@@ -538,10 +538,10 @@ int main(int argc, char *argv[]) {
 
         // 3. Load private key (used to sign cert)
         FILE *key_fp = fopen("Firmware_Device_2/keys/firmware2_priv_rsa_key.pem", "r");
-        EVP_PKEY *device_pivkey = PEM_read_PrivateKey(key_fp, NULL, NULL, NULL);
+        EVP_PKEY *device_privkey = PEM_read_PrivateKey(key_fp, NULL, NULL, NULL);
         fclose(key_fp);
 
-        if (!device_pivkey) {
+        if (!device_privkey) {
             printf("Failed to load private key for self signing\n");
             close(sockfd);
             return ERROR;
@@ -564,7 +564,7 @@ int main(int argc, char *argv[]) {
         X509_set_pubkey(cert, pubkey);
 
         // 8. Sign certificate
-        if (!X509_sign(cert, device_pivkey, EVP_sha256())) {
+        if (!X509_sign(cert, device_privkey, EVP_sha256())) {
             printf("Signing failed\n");
             close(sockfd);
             return ERROR;
@@ -580,7 +580,7 @@ int main(int argc, char *argv[]) {
         // Cleanup
         X509_REQ_free(req);
         EVP_PKEY_free(pubkey);
-        EVP_PKEY_free(device_pivkey);
+        EVP_PKEY_free(device_privkey);
         X509_free(cert);
 
     }
@@ -670,12 +670,12 @@ int main(int argc, char *argv[]) {
     }
    
     // Read cert into buffer    
-    bytes_read = fread(buffer, 1, file_size, cert_fp); // writting file into buffer
+    bytes_read = fread(buffer, 1, file_size, cert_fp); // writing file into buffer
     fclose(cert_fp);
 
     size_t amount_sent = 0;
-    printf("Sending Certifacte to Power Hypervisor: \n");
-    // Send Cert to try and make a trusted connection with the Power Hyperviosr
+    printf("Sending Certificate to Power Hypervisor: \n");
+    // Send Cert to try and make a trusted connection with the Power Hypervisor
     while (amount_sent < file_size) {
         ssize_t n = send(server_sockfd, buffer + amount_sent, bytes_read - amount_sent, 0);
         if (n <= 0) {
