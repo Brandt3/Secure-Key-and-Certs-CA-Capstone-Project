@@ -1,8 +1,6 @@
 # Any Form of Keys
 *.pem
 *.key
-!sample_rsa_priv_key.pem
-!sample_rsa_pub_key.pem
 
 # Build outputs
 *.o
@@ -28,7 +26,7 @@ CA/database/temp_approved_devices.txt
 
 # All config files
 *.conf
-!sample_csr.conf
+!sample_cert.conf
 
 # All images used for README
 images/

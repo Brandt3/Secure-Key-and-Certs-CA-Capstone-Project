@@ -7,7 +7,7 @@ The CA folder connects to a port to act as a server that is "always running," al
 ## Flow
 
 ### Step 1 — Power On
-Connect to a port and begin listening.
+Create public key, private key, and cert for CA if it has none. Then connect to a port and begin listening.
 
 ### Step 2 — Listen
 Loop a listen function to wait for incoming CSR requests on the CA port.
