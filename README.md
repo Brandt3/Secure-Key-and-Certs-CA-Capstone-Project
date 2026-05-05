@@ -96,7 +96,7 @@ Proper storage of keys and certs — keeping them separate and not hard coding s
 ## ▶️ How to Run
 
 ### Prerequisites
-- A Linux machine *(or SSH access to one)*
+- A Linux machine *(or SSH access to one if you want to run on linux)*
 - OpenSSL installed
 - GCC / Make installed
 
@@ -126,6 +126,11 @@ make run-ca [Port Num]
 ```
 
 Replace `[Port Num]` with your desired port, or leave it empty to default to port `9090`.
+
+> ⚠️ **Important — Before continuing:** Once the CA is running, you must manually copy the CA cert from `CA/certs/personal/ca_cert.crt` into the `Power_Hypervisor/trusted_ca/` folder before starting the Hypervisor.
+>
+> In a real-world deployment, the trusted CA cert would be preinstalled onto the Power Hypervisor before it ever ships. Since that isn't an option in this simulation, this manual copy is the next best approach.
+
 
 ---
 
