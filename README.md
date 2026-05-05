@@ -17,7 +17,7 @@ The goal was to create a system where I have full control over which firmware de
 A bigger picture idea of how this could also be applied is controlling which devices I trust and creating a secure communication channel with them.
 
 
-![Project Flow Diagram](images/Capstone%20Diagram.png)
+![Project Flow Diagram](images/Capstone_Diagram.png)
 Each device on the left is represented as an image of a potential firmware device that would interact with the Power Hypervisor.
 
 ---

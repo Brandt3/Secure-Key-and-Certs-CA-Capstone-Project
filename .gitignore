@@ -28,8 +28,5 @@ CA/database/temp_approved_devices.txt
 *.conf
 !sample_cert.conf
 
-# All images used for README
-images/
-
 # Vscode info
 .vscode/
