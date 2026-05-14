@@ -125,7 +125,7 @@ You will need **five separate terminals** — one for each of the following: `CA
 make run-ca [Port Num]
 ```
 
-Replace `[Port Num]` with your desired port, or leave it empty to default to port `9090`.
+Replace `[Port Num]` with your desired port by doing `CA_PORT=12345`, or leave it empty to default to port `9090`.
 
 > ⚠️ **Important — Before continuing:** Once the CA is running, you must manually copy the CA cert from `CA/certs/personal/ca_cert.crt` into the `Power_Hypervisor/trusted_ca/` folder before starting the Hypervisor.
 >
@@ -140,7 +140,7 @@ Replace `[Port Num]` with your desired port, or leave it empty to default to por
 make run-power [Port Num]
 ```
 
-Replace `[Port Num]` with your desired port, or leave it empty to default to port `12000`.
+Replace `[Port Num]` with your desired port by doing `POWER_PORT=1234`, or leave it empty to default to port `12000`.
 
 Both the CA and Power Hypervisor are now listening.
 
